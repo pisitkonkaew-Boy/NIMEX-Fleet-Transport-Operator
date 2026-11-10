@@ -1,0 +1,82 @@
+/** NIMEX Fleet Transport Operator — Apps Script (วางใน Extensions > Apps Script ของ Google Sheet ใหม่ บันทึกเป็น Code.gs)
+ *  Script Properties: ADMIN_KEY = รหัสผู้ดูแล (ห้ามเขียนรหัสลงไฟล์นี้)
+ *  Deploy > New deployment > Web app > Execute as: Me · Who has access: Anyone → คัดลอก URL /exec ใส่ใน config.js
+ *  แท็บ Rows และ Log สร้างให้อัตโนมัติ */
+var COLS = ['dc_name','plate','revenue','adj_revenue','total_revenue','daily_expense','bal_after_daily','period_expense',
+  'bal_after_period','adj_expense','bal_after_adj','rental','bal_after_rental','tax','carry_over','net_balance',
+  'row_num','dc_code','vehicle_type','owner','status','profit_loss'];
+var TEXT_COLS = ['dc_name','plate','vehicle_type','owner','status','profit_loss'];
+var CK = 'fto-data', CHUNK = 90000;
+
+function ss_() { return SpreadsheetApp.getActiveSpreadsheet(); }
+function tab_(name, head) {
+  var t = ss_().getSheetByName(name);
+  if (!t) { t = ss_().insertSheet(name); t.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold'); t.setFrozenRows(1); }
+  return t;
+}
+function rowsTab_() { return tab_('Rows', COLS); }
+function log_(a, d) { tab_('Log', ['time', 'action', 'detail']).appendRow([new Date(), a, d]); }
+function json_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+
+function publicJson_() {
+  var t = rowsTab_(), n = t.getLastRow();
+  var rows = n < 2 ? [] : t.getRange(2, 1, n - 1, COLS.length).getValues();
+  return JSON.stringify({ ok: true, cols: COLS, rows: rows, updated: PropertiesService.getScriptProperties().getProperty('UPDATED') || '' });
+}
+function cacheGet_() {
+  var c = CacheService.getScriptCache(), n = c.get(CK + '-n'); if (!n) return null;
+  var keys = []; for (var i = 0; i < +n; i++) keys.push(CK + '-' + i);
+  var all = c.getAll(keys), b = '';
+  for (i = 0; i < keys.length; i++) { if (!all[keys[i]]) return null; b += all[keys[i]]; }
+  return Utilities.ungzip(Utilities.newBlob(Utilities.base64Decode(b), 'application/x-gzip')).getDataAsString('UTF-8');
+}
+function cachePut_(s) {
+  var b = Utilities.base64Encode(Utilities.gzip(Utilities.newBlob(s, 'text/plain')).getBytes()), o = {}, n = 0;
+  for (var i = 0; i < b.length; i += CHUNK) o[CK + '-' + (n++)] = b.substr(i, CHUNK);
+  if (n <= 90) { o[CK + '-n'] = String(n); CacheService.getScriptCache().putAll(o, 21600); }
+}
+function cacheClear_() { CacheService.getScriptCache().remove(CK + '-n'); }
+
+function doGet() {
+  var s = null;
+  try { s = cacheGet_(); } catch (e) {}
+  if (!s) { s = publicJson_(); try { cachePut_(s); } catch (e) {} }
+  return ContentService.createTextOutput(s).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  var b;
+  try { b = JSON.parse(e.postData.contents); } catch (x) { return json_({ ok: false, error: 'bad_request' }); }
+  var key = PropertiesService.getScriptProperties().getProperty('ADMIN_KEY');
+  if (!key) return json_({ ok: false, error: 'admin_key_not_set' });
+  if (!b.key || b.key !== key) { Utilities.sleep(1200); return json_({ ok: false, error: 'denied' }); }
+  if (b.a === 'auth') return json_({ ok: true });
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(25000)) return json_({ ok: false, error: 'busy' });
+  try {
+    var t = rowsTab_();
+    if (b.a === 'begin') {               // replace everything: the page sends the full merged list after an upload
+      var n = t.getLastRow(); if (n > 1) t.getRange(2, 1, n - 1, COLS.length).clearContent();
+      return json_({ ok: true });
+    }
+    if (b.a === 'append') {              // ~1,500 rows per call, in COLS order
+      var rows = b.rows || [];
+      if (!Array.isArray(rows) || rows.length > 2000) return json_({ ok: false, error: 'bad_rows' });
+      if (!rows.length) return json_({ ok: true });
+      var start = t.getLastRow() + 1;
+      TEXT_COLS.forEach(function (c) { t.getRange(start, COLS.indexOf(c) + 1, rows.length, 1).setNumberFormat('@'); });
+      t.getRange(start, 1, rows.length, COLS.length).setValues(rows.map(function (r) {
+        return COLS.map(function (c, i) { var v = r[i]; return v === null || v === undefined ? '' : v; });
+      }));
+      return json_({ ok: true, total: t.getLastRow() - 1 });
+    }
+    if (b.a === 'finish') {
+      var total = t.getLastRow() - 1;
+      PropertiesService.getScriptProperties().setProperty('UPDATED', new Date().toISOString());
+      log_(b.note || 'upload', total + ' rows');
+      cacheClear_(); try { cachePut_(publicJson_()); } catch (x) {}
+      return json_({ ok: true, total: total });
+    }
+    return json_({ ok: false, error: 'unknown' });
+  } finally { lock.releaseLock(); }
+}
