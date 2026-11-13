@@ -2,7 +2,7 @@
  *  Script Properties: ADMIN_KEY = รหัสผู้ดูแล (ห้ามเขียนรหัสลงไฟล์นี้)
  *  Deploy > Manage deployments > Edit > Version: New version (ลิงก์ /exec เดิมใช้ต่อได้)
  *  แท็บที่ใช้ (สร้างให้อัตโนมัติ):
- *    Store    = ข้อมูลรายงวด (p:YYYY-MM-1 / p:YYYY-MM-2), ค่าตั้ง KPI/เงื่อนไข (cfg), ค่า KPI ที่กรอกเอง (man), ทะเบียนรถรวม NIMEX610 (reg)
+ *    Store    = ข้อมูลรายงวด (p:YYYY-MM-1 / p:YYYY-MM-2), ค่าตั้ง KPI/เงื่อนไข (cfg), ค่า KPI ที่กรอกเอง (man), ทะเบียนรถรวม NIMEX610 (reg), เงินประกันการทำงาน (dep)
  *    Vehicles = ฐานข้อมูลรถ · Zones = DC → โซน · Log = ประวัติการบันทึก
  *    แท็บ Rows ของรุ่นก่อนไม่ใช้แล้ว ลบทิ้งได้ */
 var VCOLS = ['plate', 'code', 'group', 'dc', 'vtype'];
@@ -79,6 +79,11 @@ function validReg_(d) {   /* NIMEX610: เก็บเฉพาะ 7 คอล�
   if (!d || !Array.isArray(d.cols) || d.cols.join() !== RCOLS.join() || !Array.isArray(d.rows) || d.rows.length > 6000 || !txt_(d.file || '', 200)) return false;
   return d.rows.every(function (r) { return Array.isArray(r) && r.length === RCOLS.length && r.every(function (x) { return txt_(x, 100); }); });
 }
+var DCOLS = ['code', 'dep', 'inst', 'resign', 'prog', 'status'];
+function validDep_(d) {   /* เงินประกันการทำงาน: เก็บเฉพาะ รหัสรถ เงินประกัน หนี้ผ่อนคงเหลือ วันลาออก ประเภทโครงการ สถานะ (ไม่เก็บชื่อ) */
+  if (!d || !Array.isArray(d.cols) || d.cols.join() !== DCOLS.join() || !Array.isArray(d.rows) || d.rows.length > 6000 || !txt_(d.file || '', 200) || !txt_(d.asof || '', 40) || !txt_(d.label || '', 60)) return false;
+  return d.rows.every(function (r) { return Array.isArray(r) && r.length === DCOLS.length && r.every(function (x) { return txt_(x, 100); }); });
+}
 function validMan_(m) {
   if (!m || typeof m !== 'object' || JSON.stringify(m).length > 30000) return false;
   return Object.keys(m).every(function (p) {
@@ -90,7 +95,7 @@ function validMan_(m) {
 function publicJson_() {
   var st = readStore_(), periods = {};
   Object.keys(st).forEach(function (k) { if (k.indexOf('p:') === 0) periods[k.substring(2)] = st[k]; });
-  return JSON.stringify({ ok: true, v: 3, periods: periods, cfg: st.cfg || null, man: st.man || {}, reg: st.reg || null,
+  return JSON.stringify({ ok: true, v: 3, periods: periods, cfg: st.cfg || null, man: st.man || {}, reg: st.reg || null, dep: st.dep || null,
     fleet: { vcols: VCOLS, vehicles: readTab_('Vehicles', VCOLS), zones: readTab_('Zones', ['dc_code', 'zone']) },
     updated: PropertiesService.getScriptProperties().getProperty('UPDATED') || '' });
 }
@@ -151,6 +156,11 @@ function doPost(e) {
       if (!validReg_(b.data)) return json_({ ok: false, error: 'bad_value' });
       b.data.at = new Date().toISOString();
       putStore_('reg', b.data); log_('reg', b.data.rows.length + ' codes · ' + (b.data.file || '')); changed_(); return json_({ ok: true, rows: b.data.rows.length });
+    }
+    if (b.a === 'dep') {                 // เงินประกันการทำงาน (แทนที่ทั้งหมด)
+      if (!validDep_(b.data)) return json_({ ok: false, error: 'bad_value' });
+      b.data.at = new Date().toISOString();
+      putStore_('dep', b.data); log_('dep', b.data.rows.length + ' codes · ' + (b.data.file || '')); changed_(); return json_({ ok: true, rows: b.data.rows.length });
     }
     if (b.a === 'fleet') {               // บันทึกฐานข้อมูลรถ + โซนทั้งหมด (แทนที่ของเดิม)
       if (!validFleet_(b.fleet)) return json_({ ok: false, error: 'bad_value' });

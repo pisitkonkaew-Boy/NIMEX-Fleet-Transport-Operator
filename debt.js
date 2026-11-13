@@ -9,6 +9,7 @@ var RCOLS = ['code', 'plate', 'kind', 'emp', 'dc', 'start', 'resign'];
 var RHEAD = { code: /^รหัสรถ$/, plate: /^ทะเบียนรถ$/, kind: /^ชนิดรถ$/, emp: /^ประเภทรถ$/, dc: /^ชื่อ DC$/, start: /^วันที่เริ่มงาน$/, resign: /^วันที่ลาออก$/ };
 var ST = { back: 'คืนรถให้บริษัท', newop: 'ผู้ประกอบการรายใหม่', newwait: 'ผู้ประกอบการรายใหม่ (ยังไม่วิ่งงาน)', gone: 'ลาออก ไม่มีทะเบียนกลับมา', noreg: 'ยังไม่มีข้อมูล NIMEX610' };
 var STC = { back: '#123f8c', newop: '#6e93d6', newwait: '#9fb6de', gone: '#b8334a', noreg: '#8a99b3' };
+var DEP = null, DBC = {}, PENDDEP = null, DCOLS = ['code', 'dep', 'inst', 'resign', 'prog', 'status'];
 var REG = null, RBC = {}, RBP = {}, AGG = null, AGGK = '', UI = { st: '', q: '', zone: '' }, PEND610 = null;
 function $(id) { return document.getElementById(id); }
 function E(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -42,6 +43,46 @@ function parse610(file) {
       rows.push(RCOLS.map(function (k) { return String(r[idx[k]] == null ? '' : r[idx[k]]).replace(/\s+/g, ' ').trim().replace(/[<>]/g, '').slice(0, 100); }));
     }
     return { cols: RCOLS, rows: rows, file: file.name };
+  });
+}
+
+/* ---------- เงินประกันการทำงาน (ไฟล์รายงานผู้ประกอบการติดลบ: คอลัมน์ "เงินประกันการทำงานวันที่ …") ---------- */
+function loadDep(d) {
+  DEP = d && d.rows ? d : null; DBC = {};
+  if (!DEP) return;
+  DEP.rows.forEach(function (r) { var o = {}; DEP.cols.forEach(function (c, i) { o[c] = r[i]; }); o.dep = +o.dep || 0; o.inst = +o.inst || 0; o.r = pdate(o.resign); DBC[cn(o.code)] = o; });
+}
+function cellTxt(v) {
+  if (v instanceof Date) return v.getDate() + '/' + (v.getMonth() + 1) + '/' + (v.getFullYear() + 543);
+  if (typeof v === 'number') return String(Math.round(v * 100) / 100);
+  return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().replace(/[<>]/g, '').slice(0, 100);
+}
+function progOf(t) {   /* ประเภทรถจากไฟล์เงินประกัน: รถโครงการ / รถส่วนบุคคล · ชื่อนิติบุคคล → "นิติบุคคล" (ไม่เก็บชื่อ) */
+  t = String(t || '').trim(); if (!t || t === '0') return '';
+  return /^รถ(โครงการ|ส่วนบุคคล|บริษัท)/.test(t) ? t.slice(0, 100) : /^รถ/.test(t) ? 'รถร่วม/อื่นๆ' : 'นิติบุคคล';
+}
+function parseDep(file) {
+  return file.arrayBuffer().then(function (buf) {
+    var wb = XLSX.read(buf, { type: 'array', cellDates: true }), ws = wb.Sheets[wb.SheetNames[0]], raw = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+    var hr = -1, i, j, label = '';
+    for (i = 0; i < Math.min(raw.length, 15); i++) { var row = raw[i].map(function (x) { return String(x).trim(); }); if (!label && /รอบ|งวด/.test(row[0])) label = row[0]; if (row.indexOf('รหัสรถ') >= 0) { hr = i; break; } }
+    if (hr < 0) throw new Error('ไม่พบหัวคอลัมน์ "รหัสรถ"');
+    var H = raw[hr].map(function (x) { return String(x).replace(/\s+/g, ' ').trim(); }), idx = {}, asof = '';
+    H.forEach(function (h, k) {
+      if (h === 'รหัสรถ') idx.code = k;
+      else if (/^เงินประกันการทำงานวันที่/.test(h)) { idx.dep = k; asof = h.replace(/^เงินประกันการทำงานวันที่\s*/, '').replace(/^(\d{1,2})\/(\d{1,2})(\d{4})$/, '$1/$2/$3'); }
+      else if (h === 'คงเหลือ (บาท)') idx.inst = k;
+      else if (h === 'วันลาออก') idx.resign = k;
+      else if (h === 'ประเภทรถ') idx.prog = k;
+      else if (h === 'สถานะรถ') idx.status = k;
+    });
+    if (idx.code === undefined || idx.dep === undefined) throw new Error('ไม่พบคอลัมน์ "รหัสรถ" หรือ "เงินประกันการทำงานวันที่ …"');
+    var rows = [], seen = {};
+    for (i = hr + 1; i < raw.length; i++) {
+      var r = raw[i], c = cellTxt(r[idx.code]); if (!c || seen[c] || !/\d/.test(c)) continue; seen[c] = 1;
+      rows.push([c, cellTxt(+r[idx.dep] || 0), idx.inst === undefined ? '0' : cellTxt(+r[idx.inst] || 0), idx.resign === undefined || !r[idx.resign] ? '' : cellTxt(r[idx.resign]), idx.prog === undefined ? '' : progOf(r[idx.prog]), idx.status === undefined ? '' : cellTxt(r[idx.status])]);
+    }
+    return { cols: DCOLS, rows: rows, file: file.name.slice(0, 200), asof: asof.slice(0, 40), label: String(label).slice(0, 60) };
   });
 }
 
@@ -81,9 +122,10 @@ function debtList() {
     var x = A[cur][c];
     if (inMaster(x) || isCompany(x) || revAll[c] > 0.004 || !(x.net < 0 || x.carry > 0)) return;
     var i = keys.length - 1; while (i - 1 >= 0 && A[keys[i - 1]][c] && A[keys[i - 1]][c].net < 0) i--;
-    var neg = x.net < 0, g = RBC[c], h = holder(x), end = p.periodEnd(cur);
+    var neg = x.net < 0, g = RBC[c], h = holder(x), end = p.periodEnd(cur), d = DBC[c], rs = (g && g.r) || (d && d.r) || null;
     out.push({ code: x.raw || c, c: c, plate: x.plate, dc: x.dc, zone: zoneOf(x.dc), type: String(x.type || '').replace(/^\d+\s+/, ''), emp: g ? g.emp : '', net: x.net, carry: x.carry,
-      from: neg ? keys[i] : '', n: neg ? keys.length - i : 0, first: neg && i === 0, resign: g ? g.r : null, months: g && g.r ? Math.max(0, (end.getFullYear() - g.r.getFullYear()) * 12 + end.getMonth() - g.r.getMonth()) : null, h: h });
+      from: neg ? keys[i] : '', n: neg ? keys.length - i : 0, first: neg && i === 0, dep: d ? d.dep : null, inst: d ? d.inst : 0, prog: d ? d.prog : '', dstat: d ? d.status : '', tg: p.groupType ? p.groupType(x.type) : String(x.type || '').replace(/^\d+\s+/, ''), ry: rs ? rs.getFullYear() + 543 : null,
+      resign: rs, months: g && g.r ? Math.max(0, (end.getFullYear() - g.r.getFullYear()) * 12 + end.getMonth() - g.r.getMonth()) : null, h: h });
   });
   return out.sort(function (a, b) { return a.net - b.net; });
 }
@@ -97,6 +139,41 @@ function resignWarn() {   /* รถในฐานที่มีวันลา
   if (!REG || !window.ftoFleet || !FP().cur) return [];
   var end = FP().periodEnd(FP().cur);
   return ftoFleet.vehicles.map(function (v) { var g = RBC[cn(v.code)]; return g && g.r && g.r <= end ? { v: v, g: g } : null; }).filter(Boolean);
+}
+
+/* ---------- สรุป หนี้สิน · เงินประกัน · หักล้าง ---------- */
+function agg2(L) {   /* หนี้สิน = คงเหลือสุทธิ (คอลัมน์ T) · หลังหักล้าง = คงเหลือสุทธิ + เงินประกัน · หนี้เกินเงินประกัน = รวมเฉพาะคันที่ยังติดลบหลังหักล้าง */
+  var o = { n: L.length, net: 0, dep: 0, after: 0, over: 0, noDep: 0, inst: 0 };
+  L.forEach(function (x) { var d = x.dep || 0, a = x.net + d; o.net += x.net; o.dep += d; o.after += a; if (a < 0) o.over += a; if (x.dep === null) o.noDep++; o.inst += x.inst || 0; });
+  return o;
+}
+function progShort(t) { return String(t || '').replace(/\s*\((ค่างวด|เงินประกัน)[^)]*\)/g, '').trim() || 'ไม่มีข้อมูลในไฟล์เงินประกัน'; }
+function sumHead(first) { return '<thead><tr><th>' + first + '</th><th class="text-right">คัน</th><th class="text-right">หนี้สิน (คงเหลือสุทธิ)</th><th class="text-right">เงินประกัน</th><th class="text-right">หลังหักล้าง</th><th class="text-right">หนี้เกินเงินประกัน</th>' + (DEP ? '<th class="text-right">ไม่มีข้อมูลเงินประกัน</th>' : '') + '</tr></thead>'; }
+function sumRow(label, L, cls) {
+  var a = agg2(L), m = function (v) { return '<td class="text-right' + (v < 0 ? ' fl-bad' : '') + '">' + nf(v) + '</td>'; };
+  return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + label + '</td><td class="text-right">' + nf(a.n) + '</td>' + m(a.net) + '<td class="text-right">' + nf(a.dep) + '</td>' + m(a.after) + m(a.over) + (DEP ? '<td class="text-right">' + (a.noDep ? nf(a.noDep) : '–') + '</td>' : '') + '</tr>';
+}
+function byKey(L, f) { var g = {}; L.forEach(function (x) { var k = f(x); (g[k] = g[k] || []).push(x); }); return g; }
+function yearLabel(y) { return y ? 'ลาออกปี ' + y : 'ไม่มีวันที่ลาออก'; }
+function ySort(a, b) { return (a || 9999) - (b || 9999); }
+var SK = ['back', 'newop', 'newwait', 'gone', 'noreg'];
+function summaries(F) {
+  var tw = function (t, note, body) { return '<div class="section-head">' + t + '</div>' + (note ? '<p class="fl-note">' + note + '</p>' : '') + '<div class="table-wrap fl-tw"><div style="overflow-x:auto"><table class="fl-t db-sum">' + body + '</table></div></div>'; };
+  var depNote = DEP ? 'เงินประกันจากไฟล์ ' + E(DEP.label || DEP.file || '') + (DEP.asof ? ' · ยอด ณ ' + E(DEP.asof) : '') + ' · หลังหักล้าง = คงเหลือสุทธิ + เงินประกัน (ติดลบ = ยังเป็นหนี้ · บวก = เงินประกันเหลือ) · หนี้เกินเงินประกัน = รวมเฉพาะคันที่ยังติดลบหลังหักล้าง' : 'ยังไม่ได้เติมไฟล์เงินประกัน — เติมได้ที่ ⚙️ ตั้งค่า → เงินประกัน';
+  var gs = byKey(F, function (x) { return x.h.k; }), h = '', ks = SK.filter(function (k) { return gs[k]; });
+  h += tw('สรุปตามสถานะผู้ถือครองทะเบียน', depNote, sumHead('สถานะ') + '<tbody>' + ks.map(function (k) { return sumRow('<span class="db-chip" style="--c:' + STC[k] + '">' + ST[k] + '</span>', gs[k]); }).join('') + sumRow('<b>รวม</b>', F, 'db-tot') + '</tbody>');
+  var gt = byKey(F, function (x) { return x.tg || '-'; }), rows = '';
+  Object.keys(gt).sort(function (a, b) { return gt[b].length - gt[a].length; }).forEach(function (t) {
+    rows += sumRow('<b>' + E(t) + '</b>', gt[t], 'db-sub');
+    var gy = byKey(gt[t], function (x) { return x.ry || 0; });
+    Object.keys(gy).map(Number).sort(ySort).forEach(function (y) { rows += sumRow('<span class="db-ind">' + yearLabel(y) + '</span>', gy[y]); });
+  });
+  h += tw('สรุปตามชนิดรถ และปีที่ลาออก', 'ปีที่ลาออก (พ.ศ.) จากทะเบียนรถรวม NIMEX610 ถ้าไม่มีใช้วันลาออกในไฟล์เงินประกัน', sumHead('ชนิดรถ / ปีที่ลาออก') + '<tbody>' + rows + sumRow('<b>รวม</b>', F, 'db-tot') + '</tbody>');
+  var gy2 = byKey(F, function (x) { return x.ry || 0; });
+  h += tw('ปีที่ลาออก × สถานะผู้ถือครอง (จำนวนคัน)', '', '<thead><tr><th>ปีที่ลาออก</th>' + ks.map(function (k) { return '<th class="text-right">' + ST[k] + '</th>'; }).join('') + '<th class="text-right">รวม</th><th class="text-right">หลังหักล้าง (บาท)</th></tr></thead><tbody>' +
+    Object.keys(gy2).map(Number).sort(ySort).map(function (y) { var L = gy2[y], c = byKey(L, function (x) { return x.h.k; }), a = agg2(L); return '<tr><td>' + yearLabel(y) + '</td>' + ks.map(function (k) { return '<td class="text-right">' + (c[k] ? nf(c[k].length) : '–') + '</td>'; }).join('') + '<td class="text-right"><b>' + nf(L.length) + '</b></td><td class="text-right' + (a.after < 0 ? ' fl-bad' : '') + '">' + nf(a.after) + '</td></tr>'; }).join('') + '</tbody>');
+  if (DEP) { var gp = byKey(F, function (x) { return progShort(x.prog); }); h += tw('สรุปตามประเภทรถ (โครงการ / ส่วนบุคคล)', 'จากคอลัมน์ "ประเภทรถ" ในไฟล์เงินประกัน', sumHead('ประเภทรถ') + '<tbody>' + Object.keys(gp).sort(function (a, b) { return gp[b].length - gp[a].length; }).map(function (k) { return sumRow(E(k), gp[k]); }).join('') + sumRow('<b>รวม</b>', F, 'db-tot') + '</tbody>'); }
+  return h;
 }
 
 /* ---------- หน้า: รถรอปรับสภาพหนี้ ---------- */
@@ -113,41 +190,60 @@ function renderPage() {
       ['📥 ยอดยกมารวม', '฿' + fmtK(sum(all, function (x) { return x.carry; })), 'คอลัมน์ S'],
       ['📉 คงเหลือสุทธิรวม', '฿' + fmtK(sum(all, function (x) { return x.net; })), 'คอลัมน์ T', 1],
       ['⏳ ติดลบเฉลี่ย', (all.length ? (sum(all, function (x) { return x.n; }) / all.length).toFixed(1) : '0') + ' งวด', 'นับต่อเนื่องถึงงวดนี้']
-    ].map(function (k) { return '<div class="kpi-card vw-card"><div class="kpi-label">' + k[0] + '</div><div class="kpi-value' + (k[3] ? ' vw-neg' : '') + '">' + k[1] + '</div><div class="kpi-sub">' + k[2] + '</div></div>'; }).join('') + '</div>' +
+    ].concat(DEP ? (function (a) { return [['🛡️ เงินประกันรวม', '฿' + fmtK(a.dep), 'ณ ' + (DEP.asof || '-')], ['⚖️ หลังหักล้างเงินประกัน', '฿' + fmtK(a.after), 'คงเหลือสุทธิ + เงินประกัน', a.after < 0 ? 1 : 0], ['🚨 หนี้เกินเงินประกัน', '฿' + fmtK(a.over), nf(all.filter(function (x) { return x.net + (x.dep || 0) < 0; }).length) + ' คันที่ยังติดลบ', 1]]; })(agg2(all)) : []).map(function (k) { return '<div class="kpi-card vw-card"><div class="kpi-label">' + k[0] + '</div><div class="kpi-value' + (k[3] ? ' vw-neg' : '') + '">' + k[1] + '</div><div class="kpi-sub">' + k[2] + '</div></div>'; }).join('') + '</div>' +
     '<div class="section-head">สถานะผู้ถือครองทะเบียน</div><div class="db-st">' + ['back', 'newop', 'newwait', 'gone', 'noreg'].filter(function (k) { return cnt[k]; }).map(function (k) {
       var g = all.filter(function (x) { return x.h.k === k; });
       return '<button type="button" class="db-stc' + (UI.st === k ? ' on' : '') + '" data-db="st" data-v="' + k + '" style="--c:' + STC[k] + '"><b>' + nf(cnt[k]) + '</b><span>' + ST[k] + '</span><small>คงเหลือสุทธิ ' + nf(sum(g, function (x) { return x.net; })) + ' บาท</small></button>';
     }).join('') + '</div>';
+  h += summaries(all.filter(function (x) { return (!UI.st || x.h.k === UI.st) && (!UI.zone || x.zone === UI.zone); }));
   var zs = {}; all.forEach(function (x) { var z = zs[x.zone] = zs[x.zone] || { n: 0, net: 0, carry: 0 }; z.n++; z.net += x.net; z.carry += x.carry; });
   var zl = (window.ftoFleet ? ftoFleet.zoneList() : []).filter(function (z) { return zs[z]; }).concat(Object.keys(zs).filter(function (z) { return !window.ftoFleet || ftoFleet.zoneList().indexOf(z) < 0; }));
   h += '<div class="section-head">รายโซน</div><div class="table-wrap fl-tw"><div style="overflow-x:auto"><table class="fl-t"><thead><tr><th>โซน</th><th class="text-right">คัน</th><th class="text-right">ยอดยกมารวม</th><th class="text-right">คงเหลือสุทธิรวม</th></tr></thead><tbody>' +
     zl.map(function (z) { return '<tr class="fl-click' + (UI.zone === z ? ' vw-on' : '') + '" data-db="zone" data-v="' + E(z) + '"><td><b>' + E(z) + '</b></td><td class="text-right">' + nf(zs[z].n) + '</td><td class="text-right">' + nf(zs[z].carry) + '</td><td class="text-right' + (zs[z].net < 0 ? ' fl-bad' : '') + '">' + nf(zs[z].net) + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
   h += '<div class="fl-bar"><input type="search" id="db-q" placeholder="ค้นหา ทะเบียน / รหัสรถ / DC" value="' + E(UI.q) + '" aria-label="ค้นหารถรอปรับสภาพหนี้">' + (UI.st || UI.zone ? '<button type="button" class="btn" data-db="clear">ล้างตัวกรอง (' + [UI.st ? ST[UI.st] : '', UI.zone].filter(Boolean).join(' · ') + ')</button>' : '') + '<button type="button" class="btn btn-gold" data-db="xlsx">⬇️ Excel รถรอปรับสภาพหนี้</button><span class="fl-note">' + nf(L.length) + ' คัน</span></div>' +
-    '<div class="table-wrap fl-tw"><div style="overflow-x:auto"><table class="fl-t"><thead><tr><th>ทะเบียน</th><th>รหัสรถ</th><th>DC</th><th>ประเภทรถ</th><th>วันที่ลาออก</th><th>ติดลบตั้งแต่งวด</th><th class="text-right">ติดลบ</th><th class="text-right">ยอดยกมา</th><th class="text-right">คงเหลือสุทธิ</th><th>สถานะผู้ถือครองทะเบียน</th></tr></thead><tbody>' +
+    '<div class="table-wrap fl-tw"><div style="overflow-x:auto"><table class="fl-t"><thead><tr><th>ทะเบียน</th><th>รหัสรถ</th><th>DC</th><th>ประเภทรถ</th><th>วันที่ลาออก</th><th>ติดลบตั้งแต่งวด</th><th class="text-right">ติดลบ</th><th class="text-right">ยอดยกมา</th><th class="text-right">คงเหลือสุทธิ</th>' + (DEP ? '<th class="text-right">เงินประกัน</th><th class="text-right">หลังหักล้าง</th>' : '') + '<th>สถานะผู้ถือครองทะเบียน</th></tr></thead><tbody>' +
     L.slice(0, 500).map(function (x) {
-      return '<tr><td><b>' + E(x.plate) + '</b></td><td>' + E(x.code) + '</td><td>' + E(x.dc) + '<div class="fl-note">' + E(x.zone) + '</div></td><td>' + E(x.type) + '<div class="fl-note">' + E(String(x.emp).replace(/^\d+\s+/, '')) + '</div></td>' +
+      return '<tr><td><b>' + E(x.plate) + '</b></td><td>' + E(x.code) + '</td><td>' + E(x.dc) + '<div class="fl-note">' + E(x.zone) + '</div></td><td>' + E(x.tg) + '<div class="fl-note">' + (x.tg !== x.type ? E(x.type) + ' · ' : '') + E(String(x.emp).replace(/^\d+\s+/, '')) + (x.prog ? ' · ' + E(progShort(x.prog)) : '') + '</div></td>' +
         '<td>' + thDate(x.resign) + (x.months !== null ? '<div class="fl-note">' + x.months + ' เดือนก่อนสิ้นงวด</div>' : '') + '</td><td>' + (x.from ? E(p.label(x.from, true)) + (x.first && p.keys.length ? '<div class="fl-note">งวดแรกที่มีข้อมูล</div>' : '') : '<span class="fl-note">ไม่ติดลบ (มียอดยกมา)</span>') + '</td>' +
-        '<td class="text-right' + (x.n >= 4 ? ' fl-bad' : '') + '">' + (x.n ? '<b>' + x.n + '</b> งวด' : '–') + '</td><td class="text-right">' + nf(x.carry) + '</td><td class="text-right fl-bad"><b>' + nf(x.net) + '</b></td>' +
+        '<td class="text-right' + (x.n >= 4 ? ' fl-bad' : '') + '">' + (x.n ? '<b>' + x.n + '</b> งวด' : '–') + '</td><td class="text-right">' + nf(x.carry) + '</td><td class="text-right' + (x.net < 0 ? ' fl-bad' : '') + '"><b>' + nf(x.net) + '</b></td>' + (DEP ? '<td class="text-right">' + (x.dep === null ? '<span class="fl-note">ไม่มีข้อมูล</span>' : nf(x.dep)) + '</td><td class="text-right' + (x.net + (x.dep || 0) < 0 ? ' fl-bad' : '') + '">' + nf(x.net + (x.dep || 0)) + '</td>' : '') +
         '<td><span class="db-chip" style="--c:' + STC[x.h.k] + '">' + ST[x.h.k] + '</span>' + (x.h.code ? '<div class="fl-note">รหัส ' + E(x.h.code) + ' · ' + E(String(x.h.emp || '').replace(/^\d+\s+/, '')) + (x.h.start ? ' · เริ่ม ' + thDate(x.h.start) : '') + '</div>' : '') + '</td></tr>';
-    }).join('') + (L.length ? '' : '<tr><td colspan="10">ไม่มีรถตามเงื่อนไข</td></tr>') + '</tbody></table></div></div>';
+    }).join('') + (L.length ? '' : '<tr><td colspan="12">ไม่มีรถตามเงื่อนไข</td></tr>') + '</tbody></table></div></div>';
   el.innerHTML = h;
   var q = $('db-q'); q.oninput = function () { UI.q = q.value; var pos = q.selectionStart; renderPage(); var n = $('db-q'); n.focus(); n.setSelectionRange(pos, pos); };
 }
+function sumAoa(title, groups, F) {
+  var out = [[title], [], ['กลุ่ม', 'คัน', 'หนี้สิน (คงเหลือสุทธิ)', 'เงินประกัน', 'หลังหักล้าง', 'หนี้เกินเงินประกัน', 'ไม่มีข้อมูลเงินประกัน']];
+  groups.concat([['รวม', F]]).forEach(function (g) { var a = agg2(g[1]); out.push([g[0], a.n, +a.net.toFixed(2), +a.dep.toFixed(2), +a.after.toFixed(2), +a.over.toFixed(2), a.noDep]); });
+  return out;
+}
 function xlsx() {
-  var p = FP(), L = debtList(), wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['รถรอปรับสภาพหนี้ · ' + p.spanLabel(p.cur, 'round')], [], ['ทะเบียน', 'รหัสรถ', 'DC', 'โซน', 'ประเภทรถ', 'ประเภทการจ้าง', 'วันที่ลาออก', 'ติดลบตั้งแต่งวด', 'ติดลบ (งวด)', 'ยอดยกมา', 'คงเหลือสุทธิ', 'สถานะผู้ถือครองทะเบียน', 'รหัสผู้ถือครอง', 'ประเภทผู้ถือครอง']]
-    .concat(L.map(function (x) { return [x.plate, x.code, x.dc, x.zone, x.type, x.emp, x.resign ? thDate(x.resign) : '', x.from ? p.label(x.from, true) : '', x.n, x.carry, x.net, ST[x.h.k], x.h.code || '', x.h.emp || '']; }))), 'รถรอปรับสภาพหนี้');
+  var p = FP(), L = debtList(), wb = XLSX.utils.book_new(), gs = byKey(L, function (x) { return x.h.k; }), gt = byKey(L, function (x) { return x.tg || '-'; }), ty = [];
+  Object.keys(gt).sort(function (a, b) { return gt[b].length - gt[a].length; }).forEach(function (t) { ty.push([t + ' (รวม)', gt[t]]); var gy = byKey(gt[t], function (x) { return x.ry || 0; }); Object.keys(gy).map(Number).sort(ySort).forEach(function (y) { ty.push(['   ' + t + ' · ' + yearLabel(y), gy[y]]); }); });
+  var hd = 'รถรอปรับสภาพหนี้ · ' + p.spanLabel(p.cur, 'round') + (DEP ? ' · เงินประกัน ณ ' + (DEP.asof || '-') : ' · ยังไม่มีข้อมูลเงินประกัน');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sumAoa(hd + ' · ตามสถานะผู้ถือครอง', SK.filter(function (k) { return gs[k]; }).map(function (k) { return [ST[k], gs[k]]; }), L)), 'สรุปตามสถานะ');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sumAoa(hd + ' · ตามชนิดรถและปีที่ลาออก', ty, L)), 'สรุปชนิดรถ-ปีลาออก');
+  if (DEP) { var gp = byKey(L, function (x) { return progShort(x.prog); }); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sumAoa(hd + ' · ตามประเภทรถ (โครงการ/ส่วนบุคคล)', Object.keys(gp).map(function (k) { return [k, gp[k]]; }), L)), 'สรุปประเภทรถ'); }
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['รถรอปรับสภาพหนี้ · ' + p.spanLabel(p.cur, 'round')], [], ['ทะเบียน', 'รหัสรถ', 'DC', 'โซน', 'ประเภทรถ', 'ประเภทการจ้าง', 'วันที่ลาออก', 'ติดลบตั้งแต่งวด', 'ติดลบ (งวด)', 'ยอดยกมา', 'คงเหลือสุทธิ', 'เงินประกัน', 'หลังหักล้าง', 'หนี้ผ่อนคงเหลือ (ไฟล์เงินประกัน)', 'ประเภทรถ (ไฟล์เงินประกัน)', 'สถานะรถ (ไฟล์เงินประกัน)', 'ชนิดรถ (กลุ่ม)', 'ปีที่ลาออก', 'สถานะผู้ถือครองทะเบียน', 'รหัสผู้ถือครอง', 'ประเภทผู้ถือครอง']]
+    .concat(L.map(function (x) { return [x.plate, x.code, x.dc, x.zone, x.type, x.emp, x.resign ? thDate(x.resign) : '', x.from ? p.label(x.from, true) : '', x.n, x.carry, x.net, x.dep === null ? '' : x.dep, x.dep === null ? '' : +(x.net + x.dep).toFixed(2), x.inst || '', x.prog, x.dstat, x.tg, x.ry || '', ST[x.h.k], x.h.code || '', x.h.emp || '']; }))), 'รายคัน');
   XLSX.writeFile(wb, 'NIMEX-รถรอปรับสภาพหนี้-' + p.cur + '.xlsx');
 }
 
 /* ---------- แท็บในหน้าตั้งค่า ---------- */
-function tabs() { var n = FP().cur ? pendingList().length : 0; return [['reg', 'ทะเบียนรถ NIMEX610'], ['review', 'รอยืนยัน' + (n ? ' (' + n + ')' : '')]]; }
+function tabs() { var n = FP().cur ? pendingList().length : 0; return [['reg', 'ทะเบียนรถ NIMEX610'], ['dep', 'เงินประกัน'], ['review', 'รอยืนยัน' + (n ? ' (' + n + ')' : '')]]; }
 function card(t, b) { return '<div class="fp-card"><h3>' + t + '</h3>' + b + '</div>'; }
 function tab(t) {
   if (t === 'reg') {
     var info = REG ? '<p>มีในระบบ <b>' + nf(REG.rows.length) + '</b> รหัส · ไฟล์ ' + E(REG.file || '') + ' · โหลดเมื่อ ' + E(String(REG.at || '').slice(0, 10)) + '</p>' : '<p>ยังไม่มีข้อมูล</p>';
     return card('ทะเบียนรถรวม (รายงาน NIMEX610)', info + '<p class="fl-note">ใช้หาสถานะผู้ถือครองทะเบียน (คืนรถให้บริษัท / ผู้ประกอบการรายใหม่ / ลาออก) ประเภทการจ้าง และวันที่ลาออก · เก็บเฉพาะ รหัสรถ ทะเบียน ชนิดรถ ประเภทการจ้าง DC วันเริ่มงาน วันลาออก (ไม่เก็บชื่อ เบอร์โทร เลขบัญชี) · เติมใหม่ = แทนที่ทั้งหมด</p>' +
       '<label class="fp-drop">📂 เลือกไฟล์ NIMEX610<input type="file" id="db-file" accept=".xlsx,.xls"></label><div id="db-prev">' + (PEND610 ? '<div class="fl-imp">ไฟล์ ' + E(PEND610.file) + ' · พบ <b>' + nf(PEND610.rows.length) + '</b> รหัส · มีวันที่ลาออก ' + nf(PEND610.rows.filter(function (r) { return r[6]; }).length) + ' · รถบริษัท ' + nf(PEND610.rows.filter(function (r) { return /^01/.test(r[3]); }).length) + '<div class="fl-row" style="justify-content:flex-start"><button type="button" class="btn btn-gold" data-db="save610">💾 บันทึกทะเบียนรถรวม</button><button type="button" class="btn" data-db="cancel610">ยกเลิก</button></div></div>' : '') + '</div><p class="fl-msg" id="db-msg" role="status"></p>');
+  }
+  if (t === 'dep') {
+    var dl = FP().cur ? debtList() : [], mt = dl.filter(function (x) { return x.dep !== null; }).length;
+    var di = DEP ? '<p>มีในระบบ <b>' + nf(DEP.rows.length) + '</b> รหัส · ' + E(DEP.label || '') + ' · เงินประกัน ณ ' + E(DEP.asof || '-') + ' · ไฟล์ ' + E(DEP.file || '') + ' · โหลดเมื่อ ' + E(String(DEP.at || '').slice(0, 10)) + '</p><p>จับคู่กับรถรอปรับสภาพหนี้ได้ <b>' + nf(mt) + '</b> / ' + nf(dl.length) + ' คัน</p>' : '<p>ยังไม่มีข้อมูล</p>';
+    var pv = '';
+    if (PENDDEP) { var pm = {}; PENDDEP.rows.forEach(function (r) { pm[cn(r[0])] = +r[1] || 0; }); var hit = dl.filter(function (x) { return pm[x.c] !== undefined; }); pv = '<div class="fl-imp">ไฟล์ ' + E(PENDDEP.file) + ' · ' + E(PENDDEP.label) + ' · เงินประกัน ณ ' + E(PENDDEP.asof || '-') + ' · พบ <b>' + nf(PENDDEP.rows.length) + '</b> รหัส · เงินประกันรวม ' + nf(PENDDEP.rows.reduce(function (a, r) { return a + (+r[1] || 0); }, 0)) + ' บาท<br>จับคู่กับรถรอปรับสภาพหนี้ <b>' + nf(hit.length) + '</b> / ' + nf(dl.length) + ' คัน · เงินประกันของกลุ่มนี้ ' + nf(hit.reduce(function (a, x) { return a + pm[x.c]; }, 0)) + ' บาท<div class="fl-row" style="justify-content:flex-start"><button type="button" class="btn btn-gold" data-db="savedep">💾 บันทึกเงินประกัน</button><button type="button" class="btn" data-db="canceldep">ยกเลิก</button></div></div>'; }
+    return card('เงินประกันการทำงาน', di + '<p class="fl-note">ใช้ไฟล์รายงานที่มีคอลัมน์ "รหัสรถ" และ "เงินประกันการทำงานวันที่ …" · เก็บเฉพาะ รหัสรถ เงินประกัน หนี้ผ่อนคงเหลือ วันลาออก ประเภทรถ (โครงการ/ส่วนบุคคล) และสถานะรถ (ไม่เก็บชื่อเจ้าของ) · เติมใหม่ = แทนที่ทั้งหมด</p>' +
+      '<label class="fp-drop">📂 เลือกไฟล์เงินประกัน<input type="file" id="dep-file" accept=".xlsx,.xls"></label><div id="dep-prev">' + pv + '</div><p class="fl-msg" id="db-msg" role="status"></p>');
   }
   if (t === 'review') {
     if (!FP().cur) return card('รอยืนยัน', '<p>ยังไม่มีข้อมูล</p>');
@@ -172,6 +268,12 @@ function onClick(e) {
   else if (a === 'clear') { UI.st = ''; UI.zone = ''; renderPage(); }
   else if (a === 'xlsx') xlsx();
   else if (!adm()) return;
+  else if (a === 'canceldep') { PENDDEP = null; FP().renderAdmin(); }
+  else if (a === 'savedep') {
+    var dd = PENDDEP; b.disabled = true; msg('⏳ กำลังบันทึก…');
+    window.ftoApi({ a: 'dep', data: dd }).then(function () { dd.at = new Date().toISOString(); loadDep(dd); PENDDEP = null; FP().renderAdmin(); msg('✅ บันทึกเงินประกันแล้ว ' + nf(dd.rows.length) + ' รหัส'); })
+      .catch(function (x) { b.disabled = false; msg('บันทึกไม่สำเร็จ: ' + (x.message === 'unknown' ? 'Apps Script ยังเป็นรุ่นเก่า (ต้องอัปเดต)' : x.message), true); });
+  }
   else if (a === 'cancel610') { PEND610 = null; FP().renderAdmin(); }
   else if (a === 'save610') {
     var d = PEND610; b.disabled = true; msg('⏳ กำลังบันทึก…');
@@ -195,6 +297,7 @@ function onClick(e) {
   }
 }
 function onChange(e) {
+  if (e.target.id === 'dep-file') { var fd = e.target.files[0]; if (!fd) return; msg('กำลังอ่านไฟล์…'); parseDep(fd).then(function (d) { PENDDEP = d; FP().renderAdmin(); }).catch(function (x) { PENDDEP = null; msg('อ่านไฟล์ไม่สำเร็จ: ' + x.message, true); }); e.target.value = ''; return; }
   if (e.target.id !== 'db-file') return; var f = e.target.files[0]; if (!f) return; msg('กำลังอ่านไฟล์…');
   parse610(f).then(function (d) { PEND610 = d; FP().renderAdmin(); }).catch(function (x) { PEND610 = null; msg('อ่านไฟล์ไม่สำเร็จ: ' + x.message, true); });
   e.target.value = '';
@@ -206,10 +309,10 @@ function show(tab) {
   $('page-debt').classList.add('active'); renderPage();
 }
 function start() {
-  loadReg((window.FTO_DATA || {}).reg);
+  loadReg((window.FTO_DATA || {}).reg); loadDep((window.FTO_DATA || {}).dep);
   var orig = window.renderCurrentPage;
   window.renderCurrentPage = renderCurrentPage = function () { if (currentPage === 'debt') renderPage(); else orig(); };
   document.addEventListener('click', onClick); document.addEventListener('change', onChange);
 }
-window.ftoDebt = { isCompanyCode: function (c) { var g = RBC[c]; return !!(g && /^01/.test(g.emp)); }, start: start, show: show, tabs: tabs, tab: tab, debtList: debtList, pendingList: pendingList, resignWarn: resignWarn, holder: holder, loadReg: loadReg, parse610: parse610, reset: function () { AGG = null; }, get reg() { return REG; } };
+window.ftoDebt = { isCompanyCode: function (c) { var g = RBC[c]; return !!(g && /^01/.test(g.emp)); }, start: start, show: show, tabs: tabs, tab: tab, debtList: debtList, pendingList: pendingList, resignWarn: resignWarn, holder: holder, loadReg: loadReg, parse610: parse610, parseDep: parseDep, loadDep: loadDep, get dep() { return DEP; }, reset: function () { AGG = null; }, get reg() { return REG; } };
 })();

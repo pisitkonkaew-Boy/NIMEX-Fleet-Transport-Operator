@@ -499,6 +499,6 @@ function start() {
 }
 window.ftoPeriod = { changeLog: changeLog, bigType: bigType, saveCfg: function (C, msg) { return saveCfg(C, msg); }, say: say, renderAdmin: function () { renderAdmin(); }, setTab: function (t) { UI.tab = t; UI.msg = ''; },
   periodEnd: function (k) { var a = k.split('-'), y = +a[0] - 543, m = +a[1]; return a[2] === '1' ? new Date(y, m - 1, 15) : new Date(y, m, 0); }, dataset: dataset, prevFor: prevFor, spanLabel: spanLabel, months: months, monthKeys: monthKeys, view: VIEW, setView: function (k, v) { VIEW[k] = v; refresh(); }, P: function () { return P; }, gradesOn: gradesOn,
-  start: start, refresh: function () { learnNames(); refresh(); }, show: show, overall: overall, kval: kval, units: units, built: built, stage: stage, dcChanges: dcChanges, parseFile: parseFile,
+  groupType: function (t) { var g = typeGroup()[tcode(t)]; return String(g ? (TNAME[g] || t) : (t || '')).replace(/^\d+\s+/, ''); }, start: start, refresh: function () { learnNames(); refresh(); }, show: show, overall: overall, kval: kval, units: units, built: built, stage: stage, dcChanges: dcChanges, parseFile: parseFile,
   unmatched: function () { return CUR ? built(CUR).unmatched : []; }, get keys() { return KEYS; }, get cur() { return CUR; }, get cfg() { return cfg(); }, label: pLabel };
 })();
