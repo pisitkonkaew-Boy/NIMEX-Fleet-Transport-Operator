@@ -152,7 +152,7 @@ function tab(t) {
   if (t === 'review') {
     if (!FP().cur) return card('รอยืนยัน', '<p>ยังไม่มีข้อมูล</p>');
     var L = pendingList(), W = resignWarn(), rv = cfgReview(), no = Object.keys(rv).filter(function (c) { return rv[c] === 'no'; });
-    return card('รถมีรายได้แต่ไม่อยู่ในฐานรถวิ่งงาน · ' + E(FP().spanLabel(FP().cur, 'round')) + ' (' + nf(L.length) + ')', '<p class="fl-note">ตรวจแล้วกด "อยู่ในฐาน" (เพิ่มเข้าฐานข้อมูลรถ) หรือ "ไม่ใช่รถวิ่งงาน" — ระบบจำคำตอบไว้ ไม่ถามซ้ำ · ไม่รวมรถบริษัทและรถ 6 ล้อขึ้นไป</p>' +
+    return card('รถมีรายได้แต่ไม่อยู่ในฐานรถวิ่งงาน · ' + E(FP().spanLabel(FP().cur, 'round')) + ' (' + nf(L.length) + ')', '<p class="fl-note">' + (FP().cfg.countMode === 'master' ? '' : 'รถกลุ่มนี้<b>นับเป็นรถวิ่งงานแล้ว</b> (นับตามจริงจากรายได้) · ') + 'กด "อยู่ในฐาน" เพื่อเพิ่มเข้าฐานข้อมูลรถ หรือ "ไม่ใช่รถวิ่งงาน" เพื่อตัดออกจากทุกงวด — ระบบจำคำตอบไว้ ไม่ถามซ้ำ · ไม่รวมรถบริษัทและรถ 6 ล้อขึ้นไป</p>' +
       '<div style="overflow-x:auto"><table class="fl-t"><thead><tr><th>ทะเบียน</th><th>รหัสรถ</th><th>DC</th><th>ประเภทรถ</th><th class="text-right">รวมรายได้</th><th class="text-right">คงเหลือสุทธิ</th><th>หมายเหตุ</th><th></th></tr></thead><tbody>' +
       L.map(function (x) {
         var note = x.sameplate ? 'ทะเบียนนี้อยู่ในฐานด้วยรหัส ' + E(x.sameplate.code) + ' (ยืนยันแล้วจะแทนรหัสเดิม)' : x.g ? E(String(x.g.emp).replace(/^\d+\s+/, '')) + (x.g.s ? ' · เริ่มงาน ' + thDate(x.g.s) : '') : '';
@@ -175,7 +175,7 @@ function onClick(e) {
   else if (a === 'cancel610') { PEND610 = null; FP().renderAdmin(); }
   else if (a === 'save610') {
     var d = PEND610; b.disabled = true; msg('⏳ กำลังบันทึก…');
-    window.ftoApi({ a: 'reg', data: d }).then(function () { d.at = new Date().toISOString(); loadReg(d); PEND610 = null; AGG = null; FP().renderAdmin(); msg('✅ บันทึกทะเบียนรถรวมแล้ว ' + nf(d.rows.length) + ' รหัส'); })
+    window.ftoApi({ a: 'reg', data: d }).then(function () { d.at = new Date().toISOString(); loadReg(d); PEND610 = null; AGG = null; FP().refresh(); FP().renderAdmin(); msg('✅ บันทึกทะเบียนรถรวมแล้ว ' + nf(d.rows.length) + ' รหัส'); })
       .catch(function (x) { b.disabled = false; msg('บันทึกไม่สำเร็จ: ' + (x.message === 'unknown' ? 'Apps Script ยังเป็นรุ่นเก่า' : x.message), true); });
   }
   else if (a === 'yes') {
@@ -211,5 +211,5 @@ function start() {
   window.renderCurrentPage = renderCurrentPage = function () { if (currentPage === 'debt') renderPage(); else orig(); };
   document.addEventListener('click', onClick); document.addEventListener('change', onChange);
 }
-window.ftoDebt = { start: start, show: show, tabs: tabs, tab: tab, debtList: debtList, pendingList: pendingList, resignWarn: resignWarn, holder: holder, loadReg: loadReg, parse610: parse610, reset: function () { AGG = null; }, get reg() { return REG; } };
+window.ftoDebt = { isCompanyCode: function (c) { var g = RBC[c]; return !!(g && /^01/.test(g.emp)); }, start: start, show: show, tabs: tabs, tab: tab, debtList: debtList, pendingList: pendingList, resignWarn: resignWarn, holder: holder, loadReg: loadReg, parse610: parse610, reset: function () { AGG = null; }, get reg() { return REG; } };
 })();

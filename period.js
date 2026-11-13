@@ -19,7 +19,7 @@ var DEF = {
     { id: 'k8', no: '8', name: 'ปิดบัญชีรถเสริม: ถูกต้องและตรงเวลา', unit: '%', weight: 30, grade: { A: 100, B: 99, C: 98, D: 97 }, dir: 1, src: 'manual' }
   ],
   overall: { A: 3.5, B: 2.5, C: 1.5, D: 0.5 },
-  exclude: ['801'], alias: { '680': '691', '690': '691' }, masterOnly: true, unit: 'row', dropZero: false, typeMin: 60,
+  exclude: ['801'], alias: { '680': '691', '690': '691' }, masterOnly: true, countMode: 'revenue', typeLow: 40, unit: 'row', dropZero: false, typeMin: 60,
   typeGroup: { '041': '040', '044': '042' }   /* แสดงผลรถ 2 กลุ่ม: 4 ล้อกลาง → ปิกอัพ · ควบคุมอุณหภูมิ4WJ → ควบคุมอุณหภูมิ4W */
 };
 var SRC = { net_ge: 'คำนวณจากไฟล์: % รถที่ยอดคงเหลือสุทธิ ≥ เกณฑ์ (บาท)', manual: 'ผู้ดูแลกรอกค่าเองทุกงวด' };
@@ -80,10 +80,21 @@ function merge(rows) {   /* สูตรเดิม: รวมทะเบี�
   });
   return Array.from(m.values()).map(function (r) { r.profit_loss = r.net_balance > 0 ? 'กำไร' : 'ขาดทุน'; return r; });
 }
+function countMode() { return cfg().countMode || 'revenue'; }
+function typeLow() { var t = cfg().typeLow; return t === undefined || t === null ? 40 : +t; }
+/* นับตามจริงจากรายได้: รถที่มีรายได้ในงวดนั้น · ประเภทรถตั้งแต่ 040 (ไม่นับมอเตอร์ไซต์ 020 / รถใช้งานบริษัท 030)
+   · ไม่ใช่รถบริษัท (NIMEX610 พนักงานรหัส 01) · ไม่ใช่รหัสที่ผู้ดูแลตอบว่า "ไม่ใช่รถวิ่งงาน" */
+function running(r) {
+  if (!(r.total_revenue > 0)) return false;
+  var t = tcode(r.vehicle_type_raw || r.vehicle_type); if (t && +t < typeLow()) return false;
+  var c = String(r.dc_code || '').replace(/\D/g, '').replace(/^0+/, '');
+  if (c && (cfg().review || {})[c] === 'no') return false;
+  return !(window.ftoDebt && ftoDebt.isCompanyCode && ftoDebt.isCompanyCode(c));
+}
 function build(k) {
   var s = stage(k), rows = s.rows, M = window.ftoFleet, inM = [], outM = [];
   rows.forEach(function (r) { (M && M.match(r) ? inM : outM).push(r); });
-  var use = cfg().masterOnly && M && M.vehicles.length ? inM : rows;
+  var use = countMode() === 'revenue' ? rows.filter(running) : (cfg().masterOnly && M && M.vehicles.length ? inM : rows);
   var merged = merge(use);
   return { stage: s, db: merged, unmatched: outM, dupMerged: use.length - merged.length };
 }
@@ -250,7 +261,7 @@ function renderAdmin() {
 }
 function card(t, b) { return '<div class="fp-card"><h3>' + t + '</h3>' + b + '</div>'; }
 function tabUpload() {
-  var h = card('ข้อมูลที่ใช้แสดงผลอยู่', CUR ? '<p>ล่าสุด งวด ' + pLabel(KEYS[KEYS.length - 1], true) + ' · มี ' + KEYS.length + ' งวดในระบบ · ' + (cfg().masterOnly ? 'นับเฉพาะรถในฐานข้อมูลรถ (' + nf(window.ftoFleet ? ftoFleet.vehicles.length : 0) + ' คัน)' : 'นับทุกคันในไฟล์') + ' · ตัด DC ' + E(cfg().exclude.join(', ')) + ' · รวม DC ' + E(Object.keys(cfg().alias).map(function (a) { return a + '→' + cfg().alias[a]; }).join(', ')) + '</p>' : '<p>ยังไม่มีข้อมูล เติมไฟล์งวดแรกด้านล่าง</p>');
+  var h = card('ข้อมูลที่ใช้แสดงผลอยู่', CUR ? '<p>ล่าสุด งวด ' + pLabel(KEYS[KEYS.length - 1], true) + ' · มี ' + KEYS.length + ' งวดในระบบ · ' + (countMode() === 'revenue' ? 'นับตามจริง: รถที่มีรายได้ในงวดนั้น (ไม่รวมรถบริษัท)' : cfg().masterOnly ? 'นับเฉพาะรถในฐานข้อมูลรถ (' + nf(window.ftoFleet ? ftoFleet.vehicles.length : 0) + ' คัน)' : 'นับทุกคันในไฟล์') + ' · ตัด DC ' + E(cfg().exclude.join(', ')) + ' · รวม DC ' + E(Object.keys(cfg().alias).map(function (a) { return a + '→' + cfg().alias[a]; }).join(', ')) + '</p>' : '<p>ยังไม่มีข้อมูล เติมไฟล์งวดแรกด้านล่าง</p>');
   h += card('เติมไฟล์รายงวด', '<p class="fl-note">เลือกรายงาน NIMEX03102 (รายงานปิดบัญชีรถ แบบละเอียด) 1 ไฟล์ = 1 งวด (1–15 หรือ 16–สิ้นเดือน) ระบบอ่านงวดจากหัวรายงาน สรุปผลให้ตรวจก่อนบันทึก ถ้างวดนั้นมีอยู่แล้วจะถูกแทนที่ · DC ของรถในฐานจะอัปเดตตามไฟล์</p>' +
     '<label class="fp-drop">📂 เลือกไฟล์ Excel<input type="file" id="fp-file" accept=".xlsx,.xls"></label><div id="fp-prev">' + (PEND ? prevHtml() : '') + '</div>' + msgHtml());
   h += card('งวดที่มีในระบบ', '<div style="overflow-x:auto"><table class="fl-t"><thead><tr><th>งวด</th><th class="text-right">แถวในไฟล์</th><th class="text-right">รถที่นับ</th><th class="text-right">คงเหลือสุทธิรวม</th>' + cfg().kpis.filter(function (k) { return k.src === 'net_ge'; }).map(function (k) { return '<th class="text-right">KPI ' + E(k.no) + '</th>'; }).join('') + '<th>ไฟล์</th><th>โหลดเมื่อ</th><th></th></tr></thead><tbody>' +
@@ -358,7 +369,9 @@ function tabCond() {
     '<label>DC ที่รวมกัน (บรรทัดละ 1 คู่ รูปแบบ รหัสเดิม=รหัสที่ใช้)<textarea id="fp-al" rows="3">' + E(Object.keys(C.alias).map(function (a) { return a + '=' + C.alias[a]; }).join('\n')) + '</textarea></label>' +
     '<label>ไม่นับรถรหัสประเภทตั้งแต่ (ทุกมิติ · 060 = 6 ล้อ, 100 = 10 ล้อ, 065 = ลูกพ่วง · 0 = นับทุกประเภท)<input id="fp-tm" type="number" min="0" max="999" value="' + typeMin() + '" style="max-width:120px"></label>' +
     '<label>รวมประเภทรถตอนแสดงผล (บรรทัดละ 1 คู่ รูปแบบ รหัสประเภทเดิม=รหัสที่ใช้ · 041 = 4 ล้อกลาง → 040 ปิกอัพ)<textarea id="fp-tg" rows="2">' + E(Object.keys(typeGroup()).map(function (a) { return a + '=' + typeGroup()[a]; }).join('\n')) + '</textarea></label>' +
-    '<label class="fp-chk"><input type="checkbox" id="fp-mo"' + (C.masterOnly ? ' checked' : '') + '> นับเฉพาะรถในฐานข้อมูลรถ</label>' +
+    '<div>วิธีนับรถวิ่งงาน: <label class="fp-chk"><input type="radio" name="fp-cm" value="revenue"' + (countMode() === 'revenue' ? ' checked' : '') + '> ตามจริง — รถที่มีรายได้ในงวดนั้น ไม่รวมรถบริษัท (NIMEX610) และรหัสที่ตอบว่าไม่ใช่รถวิ่งงาน</label> <label class="fp-chk"><input type="radio" name="fp-cm" value="master"' + (countMode() !== 'revenue' ? ' checked' : '') + '> ตามฐานข้อมูลรถ</label></div>' +
+    '<label>วิธีตามจริง: ไม่นับรหัสประเภทต่ำกว่า (040 = ไม่นับมอเตอร์ไซต์ 020 และรถใช้งานบริษัท 030)<input id="fp-tl" type="number" min="0" max="999" value="' + typeLow() + '" style="max-width:120px"></label>' +
+    '<label class="fp-chk"><input type="checkbox" id="fp-mo"' + (C.masterOnly ? ' checked' : '') + '> วิธีตามฐาน: นับเฉพาะรถในฐานข้อมูลรถ</label>' +
     '<label class="fp-chk"><input type="checkbox" id="fp-dz"' + (C.dropZero ? ' checked' : '') + '> KPI จากไฟล์: ไม่นับรถที่ทุกช่องเป็น 0 (ไม่มีรายได้/ค่าใช้จ่ายในงวด)</label>' +
     '<div>หน่วยนับของ KPI จากไฟล์: <label class="fp-chk"><input type="radio" name="fp-u" value="row"' + (C.unit !== 'plate' ? ' checked' : '') + '> แยกตามทะเบียน + DC ตามไฟล์</label> <label class="fp-chk"><input type="radio" name="fp-u" value="plate"' + (C.unit === 'plate' ? ' checked' : '') + '> รวมเป็น 1 คัน (ยอดทุก DC)</label></div>' +
     '</div><div class="fl-row" style="justify-content:flex-start"><button type="button" class="btn btn-gold" data-fp="csave">💾 บันทึกเงื่อนไข</button></div>' + msgHtml());
@@ -435,7 +448,7 @@ function onClick(e) {
     $('fp-al').value.split(/\n/).map(function (l) { return l.trim(); }).filter(Boolean).forEach(function (l) { var m = l.match(/^(\d{2,5})\s*=\s*(\d{2,5})$/); if (!m) bad = 'รูปแบบ DC ที่รวมกันไม่ถูกต้อง: ' + l; else al[m[1]] = m[2]; });
     var tgm = {}; $('fp-tg').value.split(/\n/).map(function (l) { return l.trim(); }).filter(Boolean).forEach(function (l) { var m = l.match(/^(\d{3})\s*=\s*(\d{3})$/); if (!m) bad = 'รูปแบบรวมประเภทรถไม่ถูกต้อง (ต้องเป็นรหัส 3 หลัก เช่น 041=040): ' + l; else tgm[m[1]] = m[2]; });
     if (bad) return say(bad, true);
-    C.typeGroup = tgm; C.exclude = ex; C.alias = al; C.typeMin = Math.max(0, Math.round(+$('fp-tm').value || 0)); C.masterOnly = $('fp-mo').checked; C.dropZero = $('fp-dz').checked; C.unit = (document.querySelector('[name=fp-u]:checked') || {}).value === 'plate' ? 'plate' : 'row';
+    C.typeGroup = tgm; C.exclude = ex; C.alias = al; C.typeMin = Math.max(0, Math.round(+$('fp-tm').value || 0)); C.masterOnly = $('fp-mo').checked; C.countMode = (document.querySelector('[name=fp-cm]:checked') || {}).value === 'master' ? 'master' : 'revenue'; C.typeLow = Math.max(0, Math.round(+$('fp-tl').value || 0)); C.dropZero = $('fp-dz').checked; C.unit = (document.querySelector('[name=fp-u]:checked') || {}).value === 'plate' ? 'plate' : 'row';
     learnNames(); saveCfg(C, '✅ บันทึกเงื่อนไขแล้ว ทุกหน้าคำนวณใหม่');
   }
   else if (a === 'msave') {
