@@ -368,6 +368,36 @@ body{overflow-x:clip}
 button,input,select,textarea{font-family:'Prompt',system-ui,sans-serif}
 :focus-visible{outline:2px solid #d4af37;outline-offset:2px}
 html:not(.nx-admin) .nx-admin-only{display:none!important}
+.fts{position:fixed;inset:0;z-index:5000;background:rgba(4,16,38,.6);display:grid;place-items:center;padding:16px}
+.fts[hidden]{display:none}
+.fts-box{background:#fff;color:#0b1f3f;border-radius:16px;border-top:4px solid #d4af37;width:100%;max-width:640px;max-height:calc(100vh - 32px);overflow:auto;padding:18px 20px;font-family:'Prompt',system-ui,sans-serif;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+html[data-theme=dark] .fts-box{background:#0e2140;color:#eaf0fb}
+.fts-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.fts-top h2{margin:0;font-size:19px;font-weight:600}
+.fts-x{border:0;background:none;font-size:20px;cursor:pointer;color:inherit;width:36px;height:36px;border-radius:50%}
+.fts-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.fts-seg{display:flex;background:#e6eefb;border-radius:999px;padding:3px}
+.fts-seg button{border:0;background:none;border-radius:999px;padding:6px 16px;font:inherit;font-size:13.5px;color:#55657f;cursor:pointer}
+.fts-seg button.on{background:#b8860b;color:#fff;font-weight:500}
+.fts-seg button:disabled{opacity:.5;cursor:default}
+.fts-rg{display:flex;align-items:center;gap:6px;font-size:13.5px}
+.fts-rg select,.fts-box input[type=number]{font:inherit;padding:6px 10px;border:1px solid #c3cfe2;border-radius:10px;background:#fff;color:#0b1f3f}
+.fts-note{font-size:12.5px;color:#55657f;margin:10px 0;line-height:1.6}
+html[data-theme=dark] .fts-note{color:#a3b4d0}
+.fts-info{width:100%;border:0;border-radius:12px;padding:12px;font:inherit;font-size:16px;font-weight:600;cursor:pointer;background:linear-gradient(180deg,#f0d57a,#d4af37);color:#0a2a5e;min-height:48px}
+.fts-h{display:block;font-size:13.5px;font-weight:600;margin:14px 0 6px}
+.fts-checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px}
+.fts-checks label{display:flex;gap:8px;align-items:center;font-size:13.5px;padding:6px 8px;border:1px solid #dbe3f0;border-radius:10px;cursor:pointer}
+.fts-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.fts-btns button{border:0;border-radius:999px;padding:9px 16px;font:inherit;font-size:13.5px;font-weight:500;background:#0a2a5e;color:#fff;cursor:pointer;min-height:40px}
+.fts-btns button.alt{background:#e6eefb;color:#0a2a5e}
+.fts-box textarea{width:100%;box-sizing:border-box;font:inherit;font-size:13px;border:1px solid #c3cfe2;border-radius:10px;padding:10px;background:#f4f7fc;color:#0b1f3f;resize:vertical}
+.fts-msg{min-height:20px;font-size:13px;color:#123f8c;margin:8px 0 0}
+.fts-grade{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.fts-grade label{display:flex;align-items:center;gap:8px;font-size:14px}
+.fts-grade span{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:8px;color:#fff;font-weight:600}
+.fts-grade input{width:84px}
+@media (max-width:520px){.fts-box{padding:14px}.fts-checks{grid-template-columns:1fr}.fts-grade{grid-template-columns:1fr}}
 
 /* shell */
 .nx-app{display:flex;min-height:100vh}
@@ -621,7 +651,7 @@ body.vw-nosb #sidebar{display:none!important}
     </select>
     <button type="button" class="btn nx-admin-only btn-gold" onclick="ftoPeriod.show('admin',[...document.querySelectorAll('.navtab')].find(t=>/ตั้งค่า/.test(t.textContent)))">📂 เติมไฟล์</button>
     <button class="btn btn-green nx-admin-only" onclick="exportXLSX()">⬇️ Export XLSX</button>
-    <button class="btn nx-admin-only" onclick="exportPNG()">📷 Export PNG</button>
+    <button type="button" id="shareBtn" class="btn nx-admin-only">📤 แชร์ / อินโฟกราฟิก</button>
   </div>
 </div>
 
@@ -2008,11 +2038,12 @@ window.nxAfterStart=function(){var sel=document.getElementById('themeSelect');if
  if(t&&t!==sel.value&&[].some.call(sel.options,function(o){return o.value===t})){sel.value=t;sel.dispatchEvent(new Event('change'))}
  sel.addEventListener('change',function(){try{localStorage.setItem('nimex-fto-theme',sel.value)}catch(e){}})};
 </script>
-<script src="config.js?v=5"></script>
-<script src="fleetdb.js?v=5"></script>
-<script src="views.js?v=5"></script>
-<script src="debt.js?v=5"></script>
-<script src="period.js?v=5"></script>
-<script src="boot.js?v=5"></script>
+<script src="config.js?v=6"></script>
+<script src="fleetdb.js?v=6"></script>
+<script src="views.js?v=6"></script>
+<script src="debt.js?v=6"></script>
+<script src="period.js?v=6"></script>
+<script src="boot.js?v=6"></script>
+<script src="share.js?v=1"></script>
 </body>
 </html>

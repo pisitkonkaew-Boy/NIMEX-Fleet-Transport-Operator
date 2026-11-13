@@ -176,5 +176,5 @@ function start() {
   window.renderRisk = renderRisk = function () { orisk(); renderStreak(); };
 }
 var renderExecNew = renderExec, renderTeamNew = renderTeam, renderTrendNew = renderTrend;
-window.ftoViews = { start: start, sync: syncBar, metrics: M, streaks: streaks, get zone() { return ZONE; }, setZone: function (z) { ZONE = z; syncBar(); renderCurrentPage(); } };
+window.ftoViews = { start: start, sync: syncBar, metrics: M, streaks: streaks, get zone() { return ZONE; }, base: function (rows) { var z = ZONE, keep = DB; ZONE = ''; if (rows) DB = rows; try { return getFiltered(); } finally { ZONE = z; DB = keep; } }, setZone: function (z) { ZONE = z; syncBar(); renderCurrentPage(); } };
 })();
