@@ -1996,10 +1996,10 @@ window.nxAfterStart=function(){var sel=document.getElementById('themeSelect');if
  if(t&&t!==sel.value&&[].some.call(sel.options,function(o){return o.value===t})){sel.value=t;sel.dispatchEvent(new Event('change'))}
  sel.addEventListener('change',function(){try{localStorage.setItem('nimex-fto-theme',sel.value)}catch(e){}})};
 </script>
-<script src="config.js?v=3"></script>
+<script src="config.js?v=4"></script>
 <script src="fleetdb.js?v=3"></script>
 <script src="views.js?v=3"></script>
 <script src="period.js?v=3"></script>
-<script src="boot.js?v=3"></script>
+<script src="boot.js?v=4"></script>
 </body>
 </html>

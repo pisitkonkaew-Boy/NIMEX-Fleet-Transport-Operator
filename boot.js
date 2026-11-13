@@ -35,6 +35,16 @@
   window.ftoStatus = function (t, bad) { status(t, bad); };
   function status(t, bad) { var s = $('nx-status'); if (s) { s.textContent = t; s.classList.toggle('bad', !!bad); } }
 
+  function askKey(err) {
+    msg('<h2>ผู้ดูแลระบบ</h2>' + (err ? '<p class="bad">' + err + '</p>' : '<p>ใส่รหัสผู้ดูแลเพื่อเข้าโหมดจัดการข้อมูล</p>') +
+      '<input id="adm-key" type="password" autocomplete="current-password" aria-label="รหัสผู้ดูแล"><div class="row"><a class="btn2" href="./">ดูแบบผู้ชม</a><button class="btn1" id="adm-go">เข้าสู่ระบบ</button></div>');
+    var go = function () {
+      var v = $('adm-key').value; if (!v) return; ss(v);
+      api({ a: 'auth' }).then(function () { location.reload(); }).catch(function (e) { ss(null); askKey(e.message === 'admin_key_not_set' ? 'ยังไม่ได้ตั้ง ADMIN_KEY ใน Apps Script' : 'รหัสไม่ถูกต้อง'); });
+    };
+    $('adm-go').onclick = go; $('adm-key').onkeydown = function (e) { if (e.key === 'Enter') go(); }; $('adm-key').focus();
+  }
+
   function start() {
     cover();
     if (!window.FTO_API) { msg('<h2>ยังไม่ได้ตั้งค่า</h2><p>ยังไม่ได้ใส่ที่อยู่ระบบข้อมูล (Apps Script) ใน config.js</p>'); return; }
