@@ -83,8 +83,8 @@ function bw(list, key, n, dir) {
 }
 function bwData(P, id) { return { dc: bw(dcRanked(P), id, 5, X[id].dir), zn: bw(zoneData(P).filter(function (z) { return z.n >= MINV; }), id, 3, X[id].dir) }; }
 function debtData() {
-  if (!window.ftoDebt) return null; var L = ftoDebt.debtList(), o = { n: L.length, carry: 0, net: 0, st: {} };
-  L.forEach(function (x) { o.carry += x.carry; o.net += x.net; var s = o.st[x.h.k] = o.st[x.h.k] || { n: 0, net: 0 }; s.n++; s.net += x.net; });
+  if (!window.ftoDebt) return null; var L = ftoDebt.debtList(), o = { n: L.length, carry: 0, net: 0, dep: 0, after: 0, over: 0, hasDep: !!ftoDebt.dep, st: {} };
+  L.forEach(function (x) { var d = x.dep || 0, a = x.net + d; o.carry += x.carry; o.net += x.net; o.dep += d; o.after += a; if (a < 0) o.over += a; var s = o.st[x.h.k] = o.st[x.h.k] || { n: 0, net: 0, dep: 0, after: 0, over: 0 }; s.n++; s.net += x.net; s.dep += d; s.after += a; if (a < 0) s.over += a; });
   return o;
 }
 var STN = { back: 'คืนรถให้บริษัท', newop: 'ผู้ประกอบการรายใหม่', newwait: 'ผู้ประกอบการรายใหม่ (ยังไม่วิ่งงาน)', gone: 'ลาออก ไม่มีทะเบียนกลับมา', noreg: 'ยังไม่มีข้อมูล NIMEX610' };
@@ -102,7 +102,7 @@ function summaryText() {
   if (picked.zone) { sec('🗺️ โซนที่กำไรเฉลี่ย/คันต่ำสุด'); zoneData(P).filter(function (z) { return z.n >= MINV; }).sort(function (a, b) { return a.an - b.an; }).slice(0, 3).forEach(function (z, i) { L.push(MD[i] + ' ' + z.z + ': ' + nf(z.an) + ' บาท/คัน (' + nf(z.n) + ' คัน)'); }); }
   if (picked.dc) { sec('🚨 DC กำไรเฉลี่ย/คันต่ำสุด (≥ ' + MINV + ' คัน)'); dcWorst10(P).slice(0, 5).forEach(function (s, i) { L.push(MD[i] + ' ' + s.d + ' (' + s.z + '): ' + nf(s.an) + ' บาท/คัน · ' + nf(s.n) + ' คัน'); }); }
   if (picked.type) { sec('🚛 แยกชนิดรถ'); typeData(P).forEach(function (s) { L.push('• ' + s.name + ': ' + nf(s.n) + ' คัน · กำไรสุทธิ ' + nf(s.net) + ' · เฉลี่ย ' + nf(s.an) + '/คัน · กำไร ' + p1(s.pp)); }); }
-  if (picked.debt) { var D = debtData(); if (D) { sec('💳 รถรอปรับสภาพหนี้ ' + nf(D.n) + ' คัน · ยอดยกมา ' + nf(D.carry) + ' · คงเหลือสุทธิ ' + nf(D.net) + ' บาท'); Object.keys(D.st).forEach(function (k) { L.push('• ' + STN[k] + ': ' + D.st[k].n + ' คัน (' + nf(D.st[k].net) + ' บาท)'); }); } }
+  if (picked.debt) { var D = debtData(); if (D) { sec('💳 รถรอปรับสภาพหนี้ ' + nf(D.n) + ' คัน · ยอดยกมา ' + nf(D.carry) + ' · คงเหลือสุทธิ ' + nf(D.net) + ' บาท'); if (D.hasDep) L.push('🛡️ เงินประกัน ' + nf(D.dep) + ' · หลังหักล้าง ' + nf(D.after) + ' · หนี้เกินเงินประกัน ' + nf(D.over) + ' บาท'); Object.keys(D.st).forEach(function (k) { L.push('• ' + STN[k] + ': ' + D.st[k].n + ' คัน (หนี้ ' + nf(D.st[k].net) + (D.hasDep ? ' · หลังหักล้าง ' + nf(D.st[k].after) : '') + ' บาท)'); }); } }
   BWK.forEach(function (id) {
     if (!picked['bw_' + id]) return; var B = bwData(P, id), f = function (s) { return X[id].money ? nf(s[id]) + ' บาท' : p1(s[id]); };
     sec('🏅 ดีสุด/แย่สุด · ' + X[id].l);
@@ -233,8 +233,9 @@ function infographic(logo) {
     s += panel(xs[1], ys[1], pw, ph, 'รถรอปรับสภาพหนี้ ตามสถานะผู้ถือครองทะเบียน', MP().spanLabel(MP().cur, 'round')) + donut2(ccx, ccy, rr, ks.map(function (k) { return { v: Dd.st[k].n, c: STC[k] }; }), nf(Dd.n), 'คัน');
     ks.forEach(function (k, i) { s += '<rect x="' + lx + '" y="' + (ly + i * 34) + '" width="18" height="18" rx="4" fill="' + STC[k] + '"/>' + T(lx + 26, ly + i * 34 + 15, STN[k] + '  ·  ' + Dd.st[k].n + ' คัน  ·  ' + nf(Dd.st[k].net) + ' บาท', { fs: 15 }); });
     s += T(lx, ly + ks.length * 34 + 30, 'คงเหลือสุทธิรวม ' + nf(Dd.net) + ' บาท', { fs: 17, fw: 600, c: '#b8334a' });
+    if (Dd.hasDep) s += T(lx, ly + ks.length * 34 + 58, 'เงินประกัน ' + nf(Dd.dep) + ' · หลังหักล้าง ' + nf(Dd.after), { fs: 15 }) + T(lx, ly + ks.length * 34 + 84, 'หนี้เกินเงินประกัน ' + nf(Dd.over) + ' บาท', { fs: 16, fw: 600, c: '#b8334a' });
   }
-  s += '<rect y="' + (H - 40) + '" width="' + W + '" height="40" fill="#0a2a5e"/>' + T(28, H - 14, 'สูตร: 8 ตัวหลักจากไฟล์ NIMEX03102 · รถร่วมในฐานรถวิ่งงาน (จับคู่ด้วยรหัสรถ) · ไม่นับ DC 801 และรถ 6 ล้อขึ้นไป · 680/690 นับเป็น 691 · กำไร = คงเหลือสุทธิ > 0 · % ≥ เกณฑ์ = คงเหลือสุทธิ ≥ ' + nf(par) + ' บาท', { fs: 14, c: '#cfdcf2' }) + T(W - 28, H - 14, 'NIMEX Fleet Hub', { fs: 15, fw: 600, c: '#f0d57a', a: 'end' });
+  s += '<rect y="' + (H - 40) + '" width="' + W + '" height="40" fill="#0a2a5e"/>' + T(28, H - 14, 'สูตร: 8 ตัวหลักจากไฟล์ NIMEX03102 · ' + (MP().cfg.countMode === 'master' ? 'รถร่วมในฐานรถวิ่งงาน (จับคู่ด้วยรหัสรถ)' : 'รถที่มีรายได้ในงวด ไม่รวมรถบริษัท') + ' · ไม่นับ DC 801 และรถ 6 ล้อขึ้นไป · 680/690 นับเป็น 691 · กำไร = คงเหลือสุทธิ > 0 · % ≥ เกณฑ์ = คงเหลือสุทธิ ≥ ' + nf(par) + ' บาท', { fs: 14, c: '#cfdcf2' }) + T(W - 28, H - 14, 'NIMEX Fleet Hub', { fs: 15, fw: 600, c: '#f0d57a', a: 'end' });
   return wrapSvg(W, H, s);
 }
 function sections(P) {
@@ -243,7 +244,7 @@ function sections(P) {
   if (picked.zone) out.push({ k: 'zone', t: 'ผลรายโซน (ทุกโซน)', head: ['โซน', 'คัน', 'รายได้รวม', 'กำไรสุทธิรวม', 'เฉลี่ย/คัน', '% รถกำไร', '% ≥ ' + nf(k6().param), '% รถขาดทุน'], rows: zoneData(P).map(function (z) { return [z.z, nf(z.n), nf(z.rev), nf(z.net), nf(z.an), p1(z.pp), p1(z.p7), p1(z.loss)]; }) });
   if (picked.dc) out.push({ k: 'dc', t: 'DC กำไรเฉลี่ย/คันต่ำสุด 10 อันดับ (≥ ' + MINV + ' คัน)', head: ['#', 'DC', 'โซน', 'คัน', 'กำไรสุทธิรวม', 'เฉลี่ย/คัน', '% รถกำไร', '% ≥ ' + nf(k6().param)], rows: dcWorst10(P).map(function (s, i) { return [i + 1, s.d, s.z, nf(s.n), nf(s.net), nf(s.an), p1(s.pp), p1(s.p7)]; }) });
   if (picked.type) out.push({ k: 'type', t: 'แยกชนิดรถ', head: ['ชนิดรถ', 'คัน', 'รายได้รวม', 'กำไรสุทธิรวม', 'เฉลี่ย/คัน', '% รถกำไร', '% ≥ ' + nf(k6().param)], rows: typeData(P).map(function (s) { return [s.name, nf(s.n), nf(s.rev), nf(s.net), nf(s.an), p1(s.pp), p1(s.p7)]; }) });
-  if (picked.debt) { var D = debtData(); if (D) out.push({ k: 'debt', t: 'รถรอปรับสภาพหนี้ · ' + MP().spanLabel(MP().cur, 'round'), head: ['สถานะผู้ถือครองทะเบียน', 'คัน', 'คงเหลือสุทธิรวม'], rows: Object.keys(D.st).map(function (k) { return [STN[k], nf(D.st[k].n), nf(D.st[k].net)]; }).concat([['รวม', nf(D.n), nf(D.net)]]) }); }
+  if (picked.debt) { var D = debtData(); if (D) out.push({ k: 'debt', t: 'รถรอปรับสภาพหนี้ · ' + MP().spanLabel(MP().cur, 'round'), head: ['สถานะผู้ถือครองทะเบียน', 'คัน', 'หนี้สิน (คงเหลือสุทธิ)', 'เงินประกัน', 'หลังหักล้าง', 'หนี้เกินเงินประกัน'], rows: Object.keys(D.st).map(function (k) { var x = D.st[k]; return [STN[k], nf(x.n), nf(x.net), nf(x.dep), nf(x.after), nf(x.over)]; }).concat([['รวม', nf(D.n), nf(D.net), nf(D.dep), nf(D.after), nf(D.over)]]) }); }
   BWK.forEach(function (id) {
     if (!picked['bw_' + id]) return; var B = bwData(P, id), f = function (s) { return X[id].money ? nf(s[id]) : p1(s[id]); }, tag = function (x, g) { return g.best.indexOf(x) >= 0 ? 'ดีสุด' : g.worst.indexOf(x) >= 0 ? 'แย่สุด' : ''; };
     out.push({ k: 'bw_' + id, t: 'ดีสุด/แย่สุด · ' + X[id].l, head: ['ป้าย', 'ระดับ', 'ชื่อ', 'โซน', 'คัน', X[id].l],
