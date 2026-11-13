@@ -457,6 +457,122 @@ th{background:#0a2a5e;color:#fff!important;font-weight:500;letter-spacing:.02em;
 @media (max-width:899px){.nx-rail{overflow-x:auto!important;max-width:100vw;contain:paint}#navtabs{flex:0 0 auto}}
 #content{min-width:0}#content .chart-wrap{min-width:0}
 
+
+/* ===== ฐานข้อมูลรถ / สรุปโซน (fleetdb.js) ===== */
+.fl-head{margin-bottom:14px;background:var(--card);border-radius:12px;border:1px solid var(--border)}
+.fl-bar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:0 0 12px}
+.fl-bar label{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--text2)}
+.fl-bar select,.fl-bar input[type=search],.fl-t select{padding:7px 10px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:13px;min-width:0;max-width:100%}
+.fl-bar input[type=search]{width:220px}
+.fl-note{font-size:12.5px;color:var(--text3)}
+.fl-bad{color:var(--red)!important}
+.fl-warn{background:rgba(212,175,55,.12);border:1px solid #d4af37;color:var(--text);border-radius:10px;padding:10px 14px;margin:0 0 12px;font-size:13.5px}
+.fl-kpi{margin-bottom:16px}
+.fl-tw{margin-bottom:16px}
+.fl-t{width:100%;border-collapse:collapse;font-size:13px}
+.fl-t th{background:#0a2a5e;color:#fff;font-weight:600;padding:9px 10px;text-align:left;white-space:nowrap;position:sticky;top:0}
+.fl-t td{padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text);white-space:nowrap}
+.fl-t tfoot td{background:var(--bg3);font-weight:600}
+.fl-t tr.fl-click{cursor:pointer}.fl-t tr.fl-click:hover td{background:var(--glow)}
+.fl-act{display:flex;gap:6px}.fl-act .btn{padding:4px 10px;font-size:12px}.fl-del{color:var(--red)!important}
+.fl-list{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 14px;margin:0 0 12px}
+.fl-list summary{cursor:pointer;font-weight:600;color:var(--text)}
+.fl-list table{margin-top:10px}
+.fl-tabs{display:flex;gap:6px;flex:1}
+.fl-tabs button{padding:8px 14px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:13.5px}
+.fl-tabs button.on{background:#0a2a5e;color:#fff;border-color:#0a2a5e}
+.fl-msg{min-height:1.2em;font-size:13px;color:var(--text2);margin:0 0 8px}
+.fl-imp{background:var(--card);border:1px solid #d4af37;border-radius:12px;padding:12px 14px;margin:0 0 12px;font-size:13.5px;line-height:1.7;color:var(--text)}
+.fl-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;justify-content:flex-end}
+.fl-imp .fl-row{justify-content:flex-start}
+.fl-pg{display:flex;gap:10px;align-items:center;justify-content:center;font-size:13px;color:var(--text2)}
+#fl-save:disabled{opacity:.55;cursor:default}
+.fl-dlg{position:fixed;inset:0;background:rgba(7,20,39,.55);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px}
+.fl-dlg[hidden]{display:none}
+.fl-box{background:var(--card);color:var(--text);border-radius:16px;padding:20px;width:min(440px,100%);max-height:92vh;overflow:auto;border-top:5px solid #d4af37}
+.fl-box h3{margin:0 0 12px;color:var(--text)}
+.fl-box label{display:block;font-size:13px;color:var(--text2);margin-bottom:10px}
+.fl-box input{display:block;width:100%;box-sizing:border-box;margin-top:4px;padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text);font-size:14px}
+@media(max-width:760px){.fl-bar input[type=search]{width:100%}.fl-bar label{width:100%}.fl-bar label select{flex:1}}
+
+/* ===== งวด / KPI / ตั้งค่า (period.js) ===== */
+.fp-period select{font-weight:600}
+.fp-top{display:grid;gap:10px;margin-bottom:14px}
+.fp-ov{background:#0a2a5e;color:#fff;border-radius:16px;padding:16px 20px;border-bottom:5px solid #d4af37}
+.fp-ov-l{color:#f0d57a;font-size:13.5px}
+.fp-ov-v{display:flex;align-items:center;gap:12px;margin:6px 0}.fp-ov-v b{font-size:38px;line-height:1}.fp-ov-v small{color:#cfdcf2}
+.fp-ov-s{font-size:13px;color:#cfdcf2}.fp-ov .fl-bad{color:#ff9aa8!important}
+.fp-big{display:inline-grid;place-items:center;width:52px;height:52px;border-radius:14px;font-size:28px;font-weight:700;color:#fff}
+.fp-g{display:inline-grid;place-items:center;min-width:26px;height:24px;padding:0 6px;border-radius:7px;color:#fff;font-weight:700;font-size:13px}
+.fp-g.sm{min-width:20px;height:18px;font-size:11px}
+.fp-na{font-size:12px;color:var(--text3)}
+.fp-d{font-size:12px;font-weight:600;color:var(--text3)}.fp-d.up{color:#1a9e5f}.fp-d.down{color:#b8334a}
+.fp-wrap{white-space:normal!important;min-width:220px}
+.fp-t td{vertical-align:top}
+.fp-cur td{background:var(--glow)}
+.fp-tabs{flex-wrap:wrap;margin-bottom:14px}
+.fp-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px;color:var(--text);border-top:4px solid #d4af37}
+.fp-card h3{margin:0 0 10px;font-size:17px;color:var(--text)}
+.fp-card p{margin:0 0 8px;font-size:13.5px;line-height:1.7}
+.fp-drop{display:block;border:2px dashed var(--border);border-radius:12px;padding:16px;text-align:center;cursor:pointer;color:var(--text2);margin:8px 0}
+.fp-drop:hover{border-color:#d4af37}
+.fp-drop input{display:block;margin:8px auto 0;max-width:100%}
+.fp-ul{margin:8px 0;padding-left:20px;line-height:1.9}
+.fp-grid{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;margin:8px 0}
+.fp-grid label{display:flex;gap:6px;align-items:center;font-size:13.5px}
+.fp-grid input,.fp-grid select,.fp-edit input,.fp-edit select,.fp-form input,.fp-form textarea{padding:7px 9px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:13px;max-width:100%;box-sizing:border-box}
+.fp-edit input[type=number]{width:84px}.fp-edit .fp-name{width:360px}
+.fp-form{display:grid;gap:12px;max-width:640px}.fp-form label{display:grid;gap:4px;font-size:13.5px;color:var(--text2)}
+.fp-chk{display:inline-flex!important;gap:6px;align-items:center;font-size:13.5px;color:var(--text)!important;margin-right:12px}
+@media(max-width:760px){.fp-edit .fp-name{width:220px}.fp-ov-v b{font-size:30px}}
+
+/* ===== แถบตัวกรองด้านบน + หน้าใหม่ (views.js) ===== */
+body.vw-nosb #sidebar{display:none!important}
+#vw-bar{display:flex;flex-wrap:nowrap;gap:10px;align-items:flex-end;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:10px 12px;margin:0 0 16px;box-shadow:0 2px 10px rgba(10,42,94,.05)}
+.vw-grp{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1 1 0}
+.vw-grp.vw-fix{flex:0 0 auto}
+.vw-l{font-size:11px;color:var(--text3);font-weight:600;white-space:nowrap;line-height:1}
+#vw-bar .slicer-dropdown{width:100%;min-width:0;max-width:none;margin:0;height:36px;padding:0 26px 0 10px;font-size:13px;box-sizing:border-box;text-overflow:ellipsis}
+#vw-bar #fp-sel{min-width:142px}
+#vw-bar .vw-grp:not(.vw-fix){min-width:96px}
+.vw-end{flex:0 0 auto;flex-direction:row;align-items:flex-end}
+.vw-reset{width:auto!important;margin:0!important;height:36px;padding:0 14px!important;white-space:nowrap;box-sizing:border-box}
+#vw-bar #vw-slot-cnt{display:none!important}
+#vw-bar .vw-grp>span[id^=vw-slot]{display:block;min-width:0}
+.vw-seg{display:inline-flex;height:36px;box-sizing:border-box;border:1px solid var(--border);border-radius:999px;overflow:hidden;background:var(--bg2)}
+.vw-seg button{border:0;background:transparent;color:var(--text);padding:0 10px;font-size:13px;cursor:pointer;white-space:nowrap}
+.vw-seg button[aria-pressed=true]{background:#0a2a5e;color:#fff}
+.vw-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 14px;margin-bottom:14px}
+.vw-sub{font-size:13px;color:var(--text2)}
+.vw-grid8{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:1fr;gap:12px;margin-bottom:20px}
+.vw-card{cursor:default!important;display:flex!important;flex-direction:column;min-width:0;height:100%;box-sizing:border-box;min-height:150px}
+.vw-card>div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vw-card .kpi-label{font-size:12.5px}
+.vw-card .kpi-value{font-size:28px;line-height:1.15;margin:6px 0 2px}
+.vw-card .vw-cmp{margin-top:auto}
+.vw-card.sm{min-height:118px;padding:12px 12px!important}.vw-card.sm .kpi-value{font-size:19px}.vw-card.sm .kpi-label{font-size:11px}.vw-card.sm .kpi-sub,.vw-card.sm .vw-d{font-size:10.5px}
+.vw-neg{color:#ff9aa8!important}
+.vw-cmp{padding-top:7px;border-top:1px solid rgba(255,255,255,.18);font-size:12px}
+.vw-d{font-size:12px;color:var(--text3);font-weight:600}
+.vw-d.up{color:#1a9e5f}.vw-d.down{color:#b8334a}
+.kpi-card .vw-d{color:#cfdcf2}.kpi-card .vw-d.up{color:#6fe3a5}.kpi-card .vw-d.down{color:#ff9aa8}
+.vw-two{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:16px;margin-bottom:8px}
+.vw-side{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;border-top:4px solid #d4af37}
+.vw-side-h{font-weight:700;color:var(--text);margin:2px 4px 10px;font-size:15px}.vw-side-h small{color:var(--text3);font-weight:500}
+.vw-grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:1fr;gap:8px}
+.vw-t td{vertical-align:top}.vw-t td small{color:var(--text3)}
+.vw-t th[data-sort]{cursor:pointer}.vw-t th.vw-sorted{background:#123f8c}
+.vw-t tr.vw-on td{background:var(--glow)}
+.vw-chips{flex-wrap:wrap}.vw-chips button{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:999px;padding:7px 12px;font-size:13px;cursor:pointer}
+.vw-chips button[aria-pressed=true]{background:#0a2a5e;color:#fff;border-color:#0a2a5e}
+.vw-streak{margin-bottom:20px}
+.vw-buckets{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:10px 0}
+.vw-bk{background:var(--bg2);border-radius:12px;padding:10px 12px;display:grid}.vw-bk b{font-size:24px;color:var(--text)}.vw-bk span{font-size:12.5px;color:var(--text2)}
+.vw-bk.bad b{color:var(--red)}
+@media(max-width:1100px){.vw-grid4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:900px){.vw-grid8{grid-template-columns:repeat(2,minmax(0,1fr))}.vw-two{grid-template-columns:1fr}}
+@media(max-width:1180px){#vw-bar{flex-wrap:wrap}.vw-grp{flex:1 1 150px}.vw-grp.vw-fix{flex:0 0 auto}}
+@media(max-width:760px){#vw-bar{gap:8px}.vw-grp,.vw-grp.vw-fix{flex:1 1 140px}.vw-end{flex:1 1 100%}.vw-reset{width:100%!important}.vw-buckets{grid-template-columns:repeat(2,minmax(0,1fr))}.vw-card .kpi-value{font-size:22px}}
 </style>
 </head>
 <body>
@@ -476,7 +592,9 @@ th{background:#0a2a5e;color:#fff!important;font-weight:500;letter-spacing:.02em;
   <div class="navtab" onclick="switchPage('team')">📊 ประชุมทีม</div>
   <div class="navtab" onclick="switchPage('trend')">📈 เทรนด์ค่าเฉลี่ย</div>
   <div class="navtab" onclick="switchPage('risk')">⚠️ วิเคราะห์ความเสี่ยง</div>
-  <div class="navtab" onclick="switchPage('data')">🗃️ ข้อมูลทั้งหมด</div>
+  <div class="navtab" onclick="ftoFleet.show('zone',this)">🗺️ สรุปโซน / DC</div>
+  <div class="navtab" onclick="ftoPeriod.show('kpi',this)">🎯 KPI แผนก</div>
+  <div class="navtab nx-admin-only" onclick="ftoPeriod.show('admin',this)">⚙️ ตั้งค่า</div>
 </div>
 
   <a class="nx-hub" href="https://pisitkonkaew-boy.github.io/NIMEX-Fleet-Hub/">🏠 กลับ Hub</a>
@@ -491,10 +609,7 @@ th{background:#0a2a5e;color:#fff!important;font-weight:500;letter-spacing:.02em;
       <option value="light" selected>☀️ Light</option>
       <option value="minimal">⬜ Minimalist</option>
     </select>
-    <label class="btn nx-admin-only btn-gold" style="cursor:pointer;">
-      📂 นำเข้าข้อมูล
-      <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none" onchange="importFile(this)">
-    </label>
+    <button type="button" class="btn nx-admin-only btn-gold" onclick="ftoPeriod.show('admin',[...document.querySelectorAll('.navtab')].find(t=>/ตั้งค่า/.test(t.textContent)))">📂 เติมไฟล์</button>
     <button class="btn btn-green nx-admin-only" onclick="exportXLSX()">⬇️ Export XLSX</button>
     <button class="btn nx-admin-only" onclick="exportPNG()">📷 Export PNG</button>
   </div>
@@ -506,6 +621,12 @@ th{background:#0a2a5e;color:#fff!important;font-weight:500;letter-spacing:.02em;
   <div id="sidebar">
     <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border);">
       🔍 กรองข้อมูล
+    </div>
+
+    <div class="slicer-section fp-period">
+      <div class="slicer-label">งวดข้อมูล</div>
+      <select id="fp-sel" class="slicer-dropdown" aria-label="เลือกงวดข้อมูล"></select>
+      <div class="fl-note" id="fp-note"></div>
     </div>
 
     <div class="slicer-section">
@@ -653,10 +774,20 @@ th{background:#0a2a5e;color:#fff!important;font-weight:500;letter-spacing:.02em;
       </div>
       <div id="data-pagination" style="padding:12px;display:flex;gap:8px;justify-content:center;align-items:center;"></div>
     </div>
+
+    <!-- PAGE: ZONE / DC SUMMARY (fleetdb.js) -->
+    <div class="page" id="page-zone"><div class="table-header fl-head"><span class="table-title">🗺️ สรุปโซน / DC · ฐานข้อมูลรถ</span></div><div id="fl-zone-body"></div></div>
+    <!-- PAGE: KPI (period.js) -->
+    <div class="page" id="page-kpi"><div class="table-header fl-head"><span class="table-title">🎯 KPI แผนก Fleet Planning · รายงวด</span></div><div id="fp-kpi-body"></div></div>
+    <!-- PAGE: SETTINGS / UPLOAD (admin, period.js) -->
+    <div class="page" id="page-admin"><div class="table-header fl-head"><span class="table-title">⚙️ ตั้งค่า · เติมไฟล์ · KPI · ส่งออก</span></div><div id="fp-admin-body"></div></div>
+    <!-- PAGE: VEHICLE DATABASE (admin, fleetdb.js) -->
+    <div class="page" id="page-fleet"><div class="table-header fl-head"><span class="table-title">🚚 ฐานข้อมูลรถ (ตั้งค่า) · เพิ่ม / แก้ไข / ลบ / นำเข้า</span></div><div id="fl-fleet-body"></div></div>
   </div>
 </div>
 </div></div>
 
+<div id="fl-dlg" class="fl-dlg" hidden role="dialog" aria-modal="true"></div>
 <!-- MODAL -->
 <div id="modal-overlay" onclick="closeModal(event)">
   <div id="modal">
@@ -1865,7 +1996,10 @@ window.nxAfterStart=function(){var sel=document.getElementById('themeSelect');if
  if(t&&t!==sel.value&&[].some.call(sel.options,function(o){return o.value===t})){sel.value=t;sel.dispatchEvent(new Event('change'))}
  sel.addEventListener('change',function(){try{localStorage.setItem('nimex-fto-theme',sel.value)}catch(e){}})};
 </script>
-<script src="config.js?v=1"></script>
-<script src="boot.js?v=1"></script>
+<script src="config.js?v=3"></script>
+<script src="fleetdb.js?v=3"></script>
+<script src="views.js?v=3"></script>
+<script src="period.js?v=3"></script>
+<script src="boot.js?v=3"></script>
 </body>
 </html>

@@ -31,56 +31,8 @@
     return rows.map(function (r) { var o = {}; cols.forEach(function (c, i) { var v = r[i]; o[c] = NUM.indexOf(c) >= 0 ? (v === '' || v === null ? (c === 'dc_code' ? '' : 0) : +v) : String(v === null ? '' : v); }); return o; });
   }
   /* replace the whole Rows tab with this list (chunks of 1,500) */
-  function pushAll(objs, note, onStep) {
-    var rows = toRows(objs), i = 0;
-    return api({ a: 'begin' }).then(function next() {
-      if (i >= rows.length) return api({ a: 'finish', note: note });
-      var part = rows.slice(i, i + 1500); i += part.length;
-      if (onStep) onStep(i, rows.length);
-      return api({ a: 'append', rows: part }).then(next);
-    });
-  }
-  window.ftoPushAll = pushAll;
-
-  function askKey(err) {
-    msg('<h2>ผู้ดูแลระบบ</h2>' + (err ? '<p class="bad">' + err + '</p>' : '<p>ใส่รหัสผู้ดูแลเพื่อเข้าโหมดจัดการข้อมูล</p>') +
-      '<input id="adm-key" type="password" autocomplete="current-password" aria-label="รหัสผู้ดูแล"><div class="row"><a class="btn2" href="./">ดูแบบผู้ชม</a><button class="btn1" id="adm-go">เข้าสู่ระบบ</button></div>');
-    var go = function () {
-      var v = $('adm-key').value; if (!v) return; ss(v);
-      api({ a: 'auth' }).then(function () { location.reload(); }).catch(function (e) { ss(null); askKey(e.message === 'admin_key_not_set' ? 'ยังไม่ได้ตั้ง ADMIN_KEY ใน Apps Script' : 'รหัสไม่ถูกต้อง'); });
-    };
-    $('adm-go').onclick = go; $('adm-key').onkeydown = function (e) { if (e.key === 'Enter') go(); }; $('adm-key').focus();
-  }
-
-  function firstRun() {
-    msg('<h2>ตั้งค่าครั้งแรก</h2><p>ยังไม่มีข้อมูลใน Google Sheet เลือกไฟล์ <b>fto-seed.json</b> เพื่อนำเข้าข้อมูลเริ่มต้น</p><input type="file" id="seed-f" accept=".json" aria-label="ไฟล์ข้อมูลเริ่มต้น"><p class="note" id="seed-m"></p>');
-    $('seed-f').onchange = function (e) {
-      var m = $('seed-m'); m.textContent = 'กำลังอ่านไฟล์…';
-      e.target.files[0].text().then(function (t) {
-        var d = JSON.parse(t), objs = fromRows(d.cols, d.rows);
-        m.textContent = 'พบ ' + objs.length.toLocaleString() + ' รายการ กำลังบันทึก…';
-        return pushAll(objs, 'seed', function (n, all) { m.textContent = 'กำลังบันทึก ' + n.toLocaleString() + ' / ' + all.toLocaleString(); });
-      }).then(function (r) { m.textContent = 'นำเข้าแล้ว ' + r.total.toLocaleString() + ' รายการ'; setTimeout(function () { location.reload(); }, 700); })
-        .catch(function (x) { m.textContent = 'นำเข้าไม่สำเร็จ: ' + x.message; });
-    };
-  }
-
-  /* after an admin upload, mergeData() has updated DB in this page → confirm, then save the full list to the Sheet */
-  function hookUpload() {
-    if (typeof window.mergeData !== 'function') return;
-    var orig = window.mergeData;
-    window.mergeData = mergeData = function (newRows) {
-      var before = DB.length, res = orig(newRows);
-      var ok = window.confirm('ตรวจก่อนบันทึก\n\nไฟล์นี้มี ' + newRows.length.toLocaleString() + ' รายการ\n• เพิ่มใหม่ ' + res.added.toLocaleString() + '\n• แทนที่ของเดิม (ทะเบียน + DC ซ้ำ) ' + res.updated.toLocaleString() +
-        '\nรวมหลังบันทึก ' + DB.length.toLocaleString() + ' รายการ (เดิม ' + before.toLocaleString() + ')\n\nบันทึกลง Google Sheet ให้ผู้ชมทุกคนเห็นหรือไม่?');
-      if (!ok) { setTimeout(function () { location.reload(); }, 50); return res; }
-      status('กำลังบันทึกลง Google Sheet…');
-      pushAll(DB, 'upload +' + res.added + ' ~' + res.updated, function (n, all) { status('กำลังบันทึก ' + n.toLocaleString() + ' / ' + all.toLocaleString()); })
-        .then(function (r) { status('บันทึกแล้ว ' + r.total.toLocaleString() + ' รายการ · ผู้ชมเห็นข้อมูลใหม่แล้ว'); })
-        .catch(function (e) { status('บันทึกไม่สำเร็จ: ' + e.message, true); });
-      return res;
-    };
-  }
+  window.ftoApi = api; /* ใช้โดย fleetdb.js / period.js */
+  window.ftoStatus = function (t, bad) { status(t, bad); };
   function status(t, bad) { var s = $('nx-status'); if (s) { s.textContent = t; s.classList.toggle('bad', !!bad); } }
 
   function start() {
@@ -93,12 +45,17 @@
     Promise.all([authP, dataP]).then(function (x) {
       var D = x[1];
       if (window.FTO_ADMIN) document.documentElement.classList.add('nx-admin');
-      if (!D.rows || !D.rows.length) { if (window.FTO_ADMIN) firstRun(); else msg('<h2>ยังไม่มีข้อมูล</h2><p>ผู้ดูแลยังไม่ได้นำเข้าข้อมูล</p>'); return; }
-      window.FTO_ROWS = fromRows(D.cols, D.rows);
+      window.FTO_SERVER_V = D.v || 1;
+      window.FTO_FLEET = D.fleet || {};
+      window.FTO_DATA = D;   /* v3: periods / cfg / man — อ่านโดย period.js */
       if (D.updated) status('อัปเดตล่าสุด ' + new Date(D.updated).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }));
-      if (window.FTO_ADMIN) hookUpload();
+      if ((D.v || 1) < 3) {
+        if (!window.FTO_ADMIN) { msg('<h2>กำลังปรับปรุงระบบ</h2><p>ผู้ดูแลกำลังอัปเดตระบบข้อมูล ลองเปิดใหม่ภายหลัง</p>'); return; }
+        msg('<h2>ต้องอัปเดต Apps Script</h2><p>หน้าเว็บรุ่นใหม่ต้องใช้ Code.gs รุ่น v3<br>วางโค้ดใหม่ใน Apps Script แล้ว Deploy → Manage deployments → Edit → New version</p>'); return;
+      }
       $('boot').hidden = true;
-      window.ftoStart();
+      if (window.ftoFleet) window.ftoFleet.start();
+      window.ftoPeriod.start();
     }).catch(function (e) {
       if (e && e.message === 'relogin') { askKey('รหัสไม่ถูกต้อง'); return; }
       msg('<h2>โหลดข้อมูลไม่สำเร็จ</h2><p>ลองเปิดหน้านี้ใหม่อีกครั้ง</p>');

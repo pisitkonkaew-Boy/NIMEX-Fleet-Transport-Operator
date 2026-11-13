@@ -1,12 +1,12 @@
-/** NIMEX Fleet Transport Operator — Apps Script (วางใน Extensions > Apps Script ของ Google Sheet ใหม่ บันทึกเป็น Code.gs)
+/** NIMEX Fleet Transport Operator — Apps Script v3 (วางใน Extensions > Apps Script ของ Google Sheet บันทึกเป็น Code.gs)
  *  Script Properties: ADMIN_KEY = รหัสผู้ดูแล (ห้ามเขียนรหัสลงไฟล์นี้)
- *  Deploy > New deployment > Web app > Execute as: Me · Who has access: Anyone → คัดลอก URL /exec ใส่ใน config.js
- *  แท็บ Rows และ Log สร้างให้อัตโนมัติ */
-var COLS = ['dc_name','plate','revenue','adj_revenue','total_revenue','daily_expense','bal_after_daily','period_expense',
-  'bal_after_period','adj_expense','bal_after_adj','rental','bal_after_rental','tax','carry_over','net_balance',
-  'row_num','dc_code','vehicle_type','owner','status','profit_loss'];
-var TEXT_COLS = ['dc_name','plate','vehicle_type','owner','status','profit_loss'];
-var CK = 'fto-data', CHUNK = 90000;
+ *  Deploy > Manage deployments > Edit > Version: New version (ลิงก์ /exec เดิมใช้ต่อได้)
+ *  แท็บที่ใช้ (สร้างให้อัตโนมัติ):
+ *    Store    = ข้อมูลรายงวด (p:YYYY-MM-1 / p:YYYY-MM-2), ค่าตั้ง KPI/เงื่อนไข (cfg), ค่า KPI ที่กรอกเอง (man)
+ *    Vehicles = ฐานข้อมูลรถ · Zones = DC → โซน · Log = ประวัติการบันทึก
+ *    แท็บ Rows ของรุ่นก่อนไม่ใช้แล้ว ลบทิ้งได้ */
+var VCOLS = ['plate', 'code', 'group', 'dc', 'vtype'];
+var CK = 'fto-v3', CHUNK = 90000, PART = 45000;
 
 function ss_() { return SpreadsheetApp.getActiveSpreadsheet(); }
 function tab_(name, head) {
@@ -14,14 +14,80 @@ function tab_(name, head) {
   if (!t) { t = ss_().insertSheet(name); t.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold'); t.setFrozenRows(1); }
   return t;
 }
-function rowsTab_() { return tab_('Rows', COLS); }
 function log_(a, d) { tab_('Log', ['time', 'action', 'detail']).appendRow([new Date(), a, d]); }
 function json_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 
+/* ---------- Store: key → JSON (แบ่งเป็นหลายแถว แถวละไม่เกิน 45,000 ตัวอักษร) ---------- */
+function store_() { var t = tab_('Store', ['key', 'part', 'json']); return t; }
+function readStore_() {
+  var t = store_(), n = t.getLastRow(), parts = {}, o = {};
+  if (n < 2) return o;
+  t.getRange(2, 1, n - 1, 3).getValues().forEach(function (r) { var k = String(r[0]); if (!k) return; (parts[k] = parts[k] || []).push([+r[1], String(r[2])]); });
+  for (var k in parts) { parts[k].sort(function (a, b) { return a[0] - b[0]; }); try { o[k] = JSON.parse(parts[k].map(function (p) { return p[1]; }).join('')); } catch (e) {} }
+  return o;
+}
+function putStore_(key, data) {
+  var t = store_(), n = t.getLastRow(), keep = [];
+  if (n > 1) keep = t.getRange(2, 1, n - 1, 3).getValues().filter(function (r) { return String(r[0]) !== key && String(r[0]) !== ''; });
+  if (data !== null) { var s = JSON.stringify(data); for (var i = 0, p = 0; i < s.length; i += PART, p++) keep.push([key, p, s.substr(i, PART)]); }
+  if (n > 1) t.getRange(2, 1, n - 1, 3).clearContent();
+  if (keep.length) { var g = t.getRange(2, 1, keep.length, 3); g.setNumberFormat('@'); g.setValues(keep.map(function (r) { return [String(r[0]), String(r[1]), String(r[2])]; })); }
+}
+
+/* ---------- ฐานข้อมูลรถ / โซน ---------- */
+function readTab_(name, head) {
+  var t = tab_(name, head), n = t.getLastRow();
+  return n < 2 ? [] : t.getRange(2, 1, n - 1, head.length).getValues().map(function (r) { return r.map(String); });
+}
+function writeTab_(name, head, rows) {
+  var t = tab_(name, head), n = t.getLastRow();
+  if (n > 1) t.getRange(2, 1, n - 1, head.length).clearContent();
+  if (rows.length) { var g = t.getRange(2, 1, rows.length, head.length); g.setNumberFormat('@'); g.setValues(rows); }
+}
+function txt_(x, max) { return typeof x === 'string' && x.length <= max && !/[<>]/.test(x); }
+function validFleet_(f) {
+  if (!f || !Array.isArray(f.vehicles) || !Array.isArray(f.zones) || f.vehicles.length > 5000 || f.zones.length > 500) return false;
+  var seen = {};
+  for (var i = 0; i < f.vehicles.length; i++) {
+    var v = f.vehicles[i];
+    if (!Array.isArray(v) || v.length !== VCOLS.length || !v.every(function (x) { return txt_(x, 80); }) || !v[0]) return false;
+    var k = v[0].replace(/[\s-]/g, ''); if (seen[k]) return false; seen[k] = 1;
+  }
+  return f.zones.every(function (z) { return Array.isArray(z) && z.length === 2 && /^\d{1,5}$/.test(z[0]) && txt_(z[1], 40); });
+}
+
+/* ---------- ตรวจค่า ---------- */
+var PKEY = /^\d{4}-(0[1-9]|1[0-2])-[12]$/;
+function validPeriod_(d) {
+  if (!d || !Array.isArray(d.cols) || !Array.isArray(d.rows) || d.rows.length > 6000 || d.cols.length > 40) return false;
+  if (!txt_(d.label || '', 80) || !txt_(d.file || '', 200)) return false;
+  return d.rows.every(function (r) { return Array.isArray(r) && r.length === d.cols.length && r.every(function (x) { return typeof x === 'number' ? isFinite(x) : txt_(String(x), 200); }); });
+}
+function validCfg_(c) {
+  if (!c || typeof c !== 'object' || JSON.stringify(c).length > 30000) return false;
+  if (!Array.isArray(c.kpis) || c.kpis.length > 30) return false;
+  var ok = c.kpis.every(function (k) {
+    return k && /^[a-z0-9_]{1,20}$/.test(k.id) && txt_(k.name, 200) && txt_(String(k.no || ''), 10) && txt_(k.unit || '', 20) &&
+      typeof k.weight === 'number' && k.weight >= 0 && k.weight <= 100 && (k.dir === 1 || k.dir === -1) &&
+      ['A', 'B', 'C', 'D'].every(function (g) { return typeof k.grade[g] === 'number' && isFinite(k.grade[g]); }) &&
+      ['manual', 'net_ge'].indexOf(k.src) >= 0 && (k.param === undefined || (typeof k.param === 'number' && isFinite(k.param)));
+  });
+  return ok && JSON.stringify(c).indexOf('<') < 0;
+}
+function validMan_(m) {
+  if (!m || typeof m !== 'object' || JSON.stringify(m).length > 30000) return false;
+  return Object.keys(m).every(function (p) {
+    return PKEY.test(p) && m[p] && typeof m[p] === 'object' && Object.keys(m[p]).every(function (k) { var v = m[p][k]; return /^[a-z0-9_]{1,20}$/.test(k) && (v === null || (typeof v === 'number' && isFinite(v))); });
+  });
+}
+
+/* ---------- อ่าน (ผู้ชมทุกคน) ---------- */
 function publicJson_() {
-  var t = rowsTab_(), n = t.getLastRow();
-  var rows = n < 2 ? [] : t.getRange(2, 1, n - 1, COLS.length).getValues();
-  return JSON.stringify({ ok: true, cols: COLS, rows: rows, updated: PropertiesService.getScriptProperties().getProperty('UPDATED') || '' });
+  var st = readStore_(), periods = {};
+  Object.keys(st).forEach(function (k) { if (k.indexOf('p:') === 0) periods[k.substring(2)] = st[k]; });
+  return JSON.stringify({ ok: true, v: 3, periods: periods, cfg: st.cfg || null, man: st.man || {},
+    fleet: { vcols: VCOLS, vehicles: readTab_('Vehicles', VCOLS), zones: readTab_('Zones', ['dc_code', 'zone']) },
+    updated: PropertiesService.getScriptProperties().getProperty('UPDATED') || '' });
 }
 function cacheGet_() {
   var c = CacheService.getScriptCache(), n = c.get(CK + '-n'); if (!n) return null;
@@ -36,6 +102,7 @@ function cachePut_(s) {
   if (n <= 90) { o[CK + '-n'] = String(n); CacheService.getScriptCache().putAll(o, 21600); }
 }
 function cacheClear_() { CacheService.getScriptCache().remove(CK + '-n'); }
+function changed_() { PropertiesService.getScriptProperties().setProperty('UPDATED', new Date().toISOString()); cacheClear_(); try { cachePut_(publicJson_()); } catch (x) {} }
 
 function doGet() {
   var s = null;
@@ -44,6 +111,7 @@ function doGet() {
   return ContentService.createTextOutput(s).setMimeType(ContentService.MimeType.JSON);
 }
 
+/* ---------- เขียน (ผู้ดูแลเท่านั้น) ---------- */
 function doPost(e) {
   var b;
   try { b = JSON.parse(e.postData.contents); } catch (x) { return json_({ ok: false, error: 'bad_request' }); }
@@ -54,28 +122,31 @@ function doPost(e) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(25000)) return json_({ ok: false, error: 'busy' });
   try {
-    var t = rowsTab_();
-    if (b.a === 'begin') {               // replace everything: the page sends the full merged list after an upload
-      var n = t.getLastRow(); if (n > 1) t.getRange(2, 1, n - 1, COLS.length).clearContent();
-      return json_({ ok: true });
+    if (b.a === 'period') {              // เติม/แทนที่ข้อมูล 1 งวด
+      if (!PKEY.test(b.period || '') || !validPeriod_(b.data)) return json_({ ok: false, error: 'bad_value' });
+      b.data.at = new Date().toISOString();
+      putStore_('p:' + b.period, b.data); log_('period', b.period + ' · ' + b.data.rows.length + ' rows · ' + (b.data.file || ''));
+      changed_(); return json_({ ok: true, period: b.period, rows: b.data.rows.length });
     }
-    if (b.a === 'append') {              // ~1,500 rows per call, in COLS order
-      var rows = b.rows || [];
-      if (!Array.isArray(rows) || rows.length > 2000) return json_({ ok: false, error: 'bad_rows' });
-      if (!rows.length) return json_({ ok: true });
-      var start = t.getLastRow() + 1;
-      TEXT_COLS.forEach(function (c) { t.getRange(start, COLS.indexOf(c) + 1, rows.length, 1).setNumberFormat('@'); });
-      t.getRange(start, 1, rows.length, COLS.length).setValues(rows.map(function (r) {
-        return COLS.map(function (c, i) { var v = r[i]; return v === null || v === undefined ? '' : v; });
-      }));
-      return json_({ ok: true, total: t.getLastRow() - 1 });
+    if (b.a === 'delperiod') {
+      if (!PKEY.test(b.period || '')) return json_({ ok: false, error: 'bad_value' });
+      putStore_('p:' + b.period, null);
+      var man = readStore_().man || {}; if (man[b.period]) { delete man[b.period]; putStore_('man', man); }
+      log_('delperiod', b.period); changed_(); return json_({ ok: true });
     }
-    if (b.a === 'finish') {
-      var total = t.getLastRow() - 1;
-      PropertiesService.getScriptProperties().setProperty('UPDATED', new Date().toISOString());
-      log_(b.note || 'upload', total + ' rows');
-      cacheClear_(); try { cachePut_(publicJson_()); } catch (x) {}
-      return json_({ ok: true, total: total });
+    if (b.a === 'cfg') {
+      if (!validCfg_(b.cfg)) return json_({ ok: false, error: 'bad_value' });
+      putStore_('cfg', b.cfg); log_('cfg', JSON.stringify(b.cfg).slice(0, 500)); changed_(); return json_({ ok: true, cfg: b.cfg });
+    }
+    if (b.a === 'man') {
+      if (!validMan_(b.man)) return json_({ ok: false, error: 'bad_value' });
+      putStore_('man', b.man); log_('man', JSON.stringify(b.man).slice(0, 500)); changed_(); return json_({ ok: true });
+    }
+    if (b.a === 'fleet') {               // บันทึกฐานข้อมูลรถ + โซนทั้งหมด (แทนที่ของเดิม)
+      if (!validFleet_(b.fleet)) return json_({ ok: false, error: 'bad_value' });
+      writeTab_('Vehicles', VCOLS, b.fleet.vehicles); writeTab_('Zones', ['dc_code', 'zone'], b.fleet.zones);
+      log_('fleet', b.fleet.vehicles.length + ' vehicles · ' + b.fleet.zones.length + ' DC zones' + (b.note ? ' · ' + String(b.note).slice(0, 200) : ''));
+      changed_(); return json_({ ok: true, vehicles: b.fleet.vehicles.length, zones: b.fleet.zones.length });
     }
     return json_({ ok: false, error: 'unknown' });
   } finally { lock.releaseLock(); }
