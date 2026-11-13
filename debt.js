@@ -54,7 +54,7 @@ function agg() {
     var m = AGG[k] = {};
     p.stage(k).rows.forEach(function (r) {
       var c = cn(r.dc_code) || ('p:' + pn(r.plate)), x = m[c];
-      if (!x) x = m[c] = { code: c, raw: String(r.dc_code || ''), plate: r.plate, dc: clean(r.dc_name), type: r.vehicle_type, owner: r.owner, rev: 0, net: 0, carry: 0 };
+      if (!x) x = m[c] = { code: c, raw: String(r.dc_code || ''), plate: r.plate, dc: clean(r.dc_name), type: r.vehicle_type_raw || r.vehicle_type, owner: r.owner, rev: 0, net: 0, carry: 0 };
       x.rev += r.total_revenue || 0; x.net += r.net_balance || 0; x.carry += r.carry_over || 0;
     });
   });

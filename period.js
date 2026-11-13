@@ -19,7 +19,8 @@ var DEF = {
     { id: 'k8', no: '8', name: 'ปิดบัญชีรถเสริม: ถูกต้องและตรงเวลา', unit: '%', weight: 30, grade: { A: 100, B: 99, C: 98, D: 97 }, dir: 1, src: 'manual' }
   ],
   overall: { A: 3.5, B: 2.5, C: 1.5, D: 0.5 },
-  exclude: ['801'], alias: { '680': '691', '690': '691' }, masterOnly: true, unit: 'row', dropZero: false, typeMin: 60
+  exclude: ['801'], alias: { '680': '691', '690': '691' }, masterOnly: true, unit: 'row', dropZero: false, typeMin: 60,
+  typeGroup: { '041': '040', '044': '042' }   /* แสดงผลรถ 2 กลุ่ม: 4 ล้อกลาง → ปิกอัพ · ควบคุมอุณหภูมิ4WJ → ควบคุมอุณหภูมิ4W */
 };
 var SRC = { net_ge: 'คำนวณจากไฟล์: % รถที่ยอดคงเหลือสุทธิ ≥ เกณฑ์ (บาท)', manual: 'ผู้ดูแลกรอกค่าเองทุกงวด' };
 
@@ -56,12 +57,16 @@ function canon(name) {   /* รวม DC ตามค่าตั้ง เช�
 }
 function typeMin() { var t = cfg().typeMin; return t === undefined || t === null ? 60 : +t; }
 function bigType(t) { var m = String(t || '').match(/^\s*(\d{3})/), lim = typeMin(); return !!(lim && m && +m[1] >= lim); }   /* รหัสประเภทรถ ≥ 060 = 6 ล้อ / 10 ล้อ / ลูกพ่วง → ไม่นับทุกมิติ */
+var TNAME = { '040': '040  รถปิกอัพ', '042': '042  รถควบคุมอุณหภูมิ4W' };
+function typeGroup() { var g = cfg().typeGroup; return g === undefined || g === null ? DEF.typeGroup : g; }
+function tcode(t) { var m = String(t || '').match(/^\s*(\d{3})/); return m ? m[1] : ''; }
 function stage(k) {   /* ขั้น 1–2: ตัด DC ยกเว้น + ตัดรถ 6 ล้อขึ้นไป + รวม DC */
   var C = cfg(), raw = objs(P[k]), ex = 0, al = 0, big = 0, out = [];
   raw.forEach(function (o) {
     if (C.exclude.indexOf(code(o.dc_name)) >= 0) { ex++; return; }
     if (bigType(o.vehicle_type)) { big++; return; }
     var n = canon(o.dc_name); if (n !== o.dc_name) { al++; o.dc_name = n; }
+    var tg = typeGroup()[tcode(o.vehicle_type)]; if (tg) { o.vehicle_type_raw = o.vehicle_type; o.vehicle_type = TNAME[tg] || (raw.filter(function (x) { return tcode(x.vehicle_type) === tg; })[0] || {}).vehicle_type || tg; }
     out.push(o);
   });
   return { all: raw.length, excluded: ex, aliased: al, big: big, rows: out };
@@ -352,6 +357,7 @@ function tabCond() {
     '<label>DC ที่ตัดออก (รหัส คั่นด้วยจุลภาค)<input id="fp-ex" value="' + E(C.exclude.join(', ')) + '" placeholder="801"></label>' +
     '<label>DC ที่รวมกัน (บรรทัดละ 1 คู่ รูปแบบ รหัสเดิม=รหัสที่ใช้)<textarea id="fp-al" rows="3">' + E(Object.keys(C.alias).map(function (a) { return a + '=' + C.alias[a]; }).join('\n')) + '</textarea></label>' +
     '<label>ไม่นับรถรหัสประเภทตั้งแต่ (ทุกมิติ · 060 = 6 ล้อ, 100 = 10 ล้อ, 065 = ลูกพ่วง · 0 = นับทุกประเภท)<input id="fp-tm" type="number" min="0" max="999" value="' + typeMin() + '" style="max-width:120px"></label>' +
+    '<label>รวมประเภทรถตอนแสดงผล (บรรทัดละ 1 คู่ รูปแบบ รหัสประเภทเดิม=รหัสที่ใช้ · 041 = 4 ล้อกลาง → 040 ปิกอัพ)<textarea id="fp-tg" rows="2">' + E(Object.keys(typeGroup()).map(function (a) { return a + '=' + typeGroup()[a]; }).join('\n')) + '</textarea></label>' +
     '<label class="fp-chk"><input type="checkbox" id="fp-mo"' + (C.masterOnly ? ' checked' : '') + '> นับเฉพาะรถในฐานข้อมูลรถ</label>' +
     '<label class="fp-chk"><input type="checkbox" id="fp-dz"' + (C.dropZero ? ' checked' : '') + '> KPI จากไฟล์: ไม่นับรถที่ทุกช่องเป็น 0 (ไม่มีรายได้/ค่าใช้จ่ายในงวด)</label>' +
     '<div>หน่วยนับของ KPI จากไฟล์: <label class="fp-chk"><input type="radio" name="fp-u" value="row"' + (C.unit !== 'plate' ? ' checked' : '') + '> แยกตามทะเบียน + DC ตามไฟล์</label> <label class="fp-chk"><input type="radio" name="fp-u" value="plate"' + (C.unit === 'plate' ? ' checked' : '') + '> รวมเป็น 1 คัน (ยอดทุก DC)</label></div>' +
@@ -427,8 +433,9 @@ function onClick(e) {
     var C = clone(cfg()), ex = $('fp-ex').value.split(/[,\s]+/).filter(Boolean), al = {}, bad = '';
     if (ex.some(function (x) { return !/^\d{2,5}$/.test(x); })) bad = 'DC ที่ตัดออกต้องเป็นรหัสตัวเลข';
     $('fp-al').value.split(/\n/).map(function (l) { return l.trim(); }).filter(Boolean).forEach(function (l) { var m = l.match(/^(\d{2,5})\s*=\s*(\d{2,5})$/); if (!m) bad = 'รูปแบบ DC ที่รวมกันไม่ถูกต้อง: ' + l; else al[m[1]] = m[2]; });
+    var tgm = {}; $('fp-tg').value.split(/\n/).map(function (l) { return l.trim(); }).filter(Boolean).forEach(function (l) { var m = l.match(/^(\d{3})\s*=\s*(\d{3})$/); if (!m) bad = 'รูปแบบรวมประเภทรถไม่ถูกต้อง (ต้องเป็นรหัส 3 หลัก เช่น 041=040): ' + l; else tgm[m[1]] = m[2]; });
     if (bad) return say(bad, true);
-    C.exclude = ex; C.alias = al; C.typeMin = Math.max(0, Math.round(+$('fp-tm').value || 0)); C.masterOnly = $('fp-mo').checked; C.dropZero = $('fp-dz').checked; C.unit = (document.querySelector('[name=fp-u]:checked') || {}).value === 'plate' ? 'plate' : 'row';
+    C.typeGroup = tgm; C.exclude = ex; C.alias = al; C.typeMin = Math.max(0, Math.round(+$('fp-tm').value || 0)); C.masterOnly = $('fp-mo').checked; C.dropZero = $('fp-dz').checked; C.unit = (document.querySelector('[name=fp-u]:checked') || {}).value === 'plate' ? 'plate' : 'row';
     learnNames(); saveCfg(C, '✅ บันทึกเงื่อนไขแล้ว ทุกหน้าคำนวณใหม่');
   }
   else if (a === 'msave') {
