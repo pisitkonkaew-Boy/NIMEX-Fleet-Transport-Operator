@@ -19,7 +19,7 @@ var DEF = {
     { id: 'k8', no: '8', name: 'ปิดบัญชีรถเสริม: ถูกต้องและตรงเวลา', unit: '%', weight: 30, grade: { A: 100, B: 99, C: 98, D: 97 }, dir: 1, src: 'manual' }
   ],
   overall: { A: 3.5, B: 2.5, C: 1.5, D: 0.5 },
-  exclude: ['801'], alias: { '680': '691', '690': '691' }, masterOnly: true, unit: 'row', dropZero: false
+  exclude: ['801'], alias: { '680': '691', '690': '691' }, masterOnly: true, unit: 'row', dropZero: false, typeMin: 60
 };
 var SRC = { net_ge: 'คำนวณจากไฟล์: % รถที่ยอดคงเหลือสุทธิ ≥ เกณฑ์ (บาท)', manual: 'ผู้ดูแลกรอกค่าเองทุกงวด' };
 
@@ -54,14 +54,17 @@ function canon(name) {   /* รวม DC ตามค่าตั้ง เช�
   var c = code(name), t = cfg().alias[c];
   return t ? (NAMES[t] || t + '  DC') : name;
 }
-function stage(k) {   /* ขั้น 1–2: ตัด DC ยกเว้น + รวม DC */
-  var C = cfg(), raw = objs(P[k]), ex = 0, al = 0, out = [];
+function typeMin() { var t = cfg().typeMin; return t === undefined || t === null ? 60 : +t; }
+function bigType(t) { var m = String(t || '').match(/^\s*(\d{3})/), lim = typeMin(); return !!(lim && m && +m[1] >= lim); }   /* รหัสประเภทรถ ≥ 060 = 6 ล้อ / 10 ล้อ / ลูกพ่วง → ไม่นับทุกมิติ */
+function stage(k) {   /* ขั้น 1–2: ตัด DC ยกเว้น + ตัดรถ 6 ล้อขึ้นไป + รวม DC */
+  var C = cfg(), raw = objs(P[k]), ex = 0, al = 0, big = 0, out = [];
   raw.forEach(function (o) {
     if (C.exclude.indexOf(code(o.dc_name)) >= 0) { ex++; return; }
+    if (bigType(o.vehicle_type)) { big++; return; }
     var n = canon(o.dc_name); if (n !== o.dc_name) { al++; o.dc_name = n; }
     out.push(o);
   });
-  return { all: raw.length, excluded: ex, aliased: al, rows: out };
+  return { all: raw.length, excluded: ex, aliased: al, big: big, rows: out };
 }
 function merge(rows) {   /* สูตรเดิม: รวมทะเบียน + DC ที่ซ้ำ */
   var m = new Map();
@@ -102,7 +105,7 @@ function dataset(k, span, res) {
   return (DS[id] = rows);
 }
 function apply() {
-  BUILT = {}; DS = {};
+  BUILT = {}; DS = {}; if (window.ftoDebt) ftoDebt.reset();
   if (!CUR) { DB = []; } else DB = dataset(CUR).map(function (r) { return Object.assign({}, r); });
   if (window.ftoFleet && ftoFleet.reset) ftoFleet.reset();
   var sel = $('fp-sel'); if (sel) sel.innerHTML = KEYS.slice().reverse().map(function (k) { return '<option value="' + k + '"' + (k === CUR ? ' selected' : '') + '>งวด ' + pLabel(k) + '</option>'; }).join('') || '<option>ยังไม่มีข้อมูล</option>';
@@ -232,10 +235,13 @@ function renderAdmin() {
   var el = $('fp-admin-body'); if (!el) return;
   var w = dataWrap(); if (w.parentNode !== $('page-data')) $('page-data').appendChild(w);
   if (!adm()) { el.innerHTML = '<div class="fl-warn">เฉพาะผู้ดูแลระบบ</div>'; return; }
-  var h = '<div class="fl-tabs fp-tabs">' + TABS.map(function (t) { return '<button type="button" data-fp="tab" data-v="' + t[0] + '" class="' + (UI.tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>'; }).join('') + '<button type="button" data-fp="fleet">🚚 ฐานข้อมูลรถ</button></div>';
-  h += ({ upload: tabUpload, kpi: tabKpi, man: tabMan, cond: tabCond, check: tabCheck, export: tabExport, data: function () { return '<div id="fp-data-slot"></div>'; } })[UI.tab]();
+  var XT = window.ftoDebt ? ftoDebt.tabs() : [], ALL = TABS.slice(0, 5).concat(XT).concat(TABS.slice(5));
+  var h = '<div class="fl-tabs fp-tabs">' + ALL.map(function (t) { return '<button type="button" data-fp="tab" data-v="' + t[0] + '" class="' + (UI.tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>'; }).join('') + '<button type="button" data-fp="fleet">🚚 ฐานข้อมูลรถ</button></div>';
+  var FN = { upload: tabUpload, kpi: tabKpi, man: tabMan, cond: tabCond, check: tabCheck, export: tabExport, data: function () { return '<div id="fp-data-slot"></div>'; } };
+  h += FN[UI.tab] ? FN[UI.tab]() : (window.ftoDebt ? ftoDebt.tab(UI.tab) : '');
   el.innerHTML = h;
   if (UI.tab === 'data') { $('fp-data-slot').appendChild(w); dataPage = 1; renderDataTable(); }
+  if (window.ftoDebt && ftoDebt.after) ftoDebt.after(UI.tab);
 }
 function card(t, b) { return '<div class="fp-card"><h3>' + t + '</h3>' + b + '</div>'; }
 function tabUpload() {
@@ -255,7 +261,7 @@ function prevHtml() {
   var s = x.st, b = x.b, ch = x.ch, kp = cfg().kpis.filter(function (q) { return q.src === 'net_ge'; });
   return '<div class="fl-imp"><b>ไฟล์ ' + E(x.file) + '</b>' + (x.ptxt ? ' · หัวรายงาน "' + E(x.ptxt) + '"' : ' · <span class="fl-bad">ไม่พบช่วงวันที่ในหัวรายงาน เลือกงวดเอง</span>') +
     '<div class="fp-grid"><label>งวด <select id="fp-pkey">' + (k ? '' : '<option value="">— เลือกงวด —</option>') + opts + '</select></label>' + (sameKey ? '<span class="fl-bad">งวดนี้มีอยู่แล้ว จะถูกแทนที่</span>' : '') + '</div>' +
-    '<ul class="fp-ul"><li>แถวในไฟล์ <b>' + nf(s.all) + '</b> · ตัด DC ยกเว้น ' + nf(s.excluded) + ' · รวม DC (680/690→691) ' + nf(s.aliased) + ' แถว</li>' +
+    '<ul class="fp-ul"><li>แถวในไฟล์ <b>' + nf(s.all) + '</b> · ตัด DC ยกเว้น ' + nf(s.excluded) + ' · ตัดรถ 6 ล้อขึ้นไป ' + nf(s.big) + ' · รวม DC (680/690→691) ' + nf(s.aliased) + ' แถว</li>' +
     '<li>รถในฐานข้อมูลรถพบในไฟล์ <b>' + nf(x.found) + '</b> / ' + nf(x.master) + ' คัน' + (x.missing.length ? ' · <span class="fl-bad">ไม่พบ ' + nf(x.missing.length) + ' คัน</span>' : '') + '</li>' +
     '<li>รายการที่นับ (ทะเบียน + DC) <b>' + nf(b.db.length) + '</b> · รวมแถวซ้ำ ' + nf(b.dupMerged) + ' · คงเหลือสุทธิรวม <b>' + nf(b.db.reduce(function (a, r) { return a + r.net_balance; }, 0)) + '</b> บาท</li>' +
     kp.map(function (q) { var v = kval(q, '__pend'); return '<li>KPI ' + E(q.no) + ' (≥ ' + nf(q.param) + ' บาท) <b>' + fmtV(q, v) + '</b> ' + chip(grade(q, v)) + '</li>'; }).join('') +
@@ -286,9 +292,17 @@ function savePending() {
     .then(function () {
       P[k] = { cols: COLS, rows: x.rows, file: x.file, label: x.ptxt, at: new Date().toISOString() }; delete P.__pend;
       KEYS = Object.keys(P).filter(function (q) { return q !== '__pend'; }).sort(); CUR = k; PEND = null; learnNames(); refresh();
-      say('✅ บันทึกงวด ' + pLabel(k, true) + ' แล้ว · ' + nf(x.rows.length) + ' แถว' + (x.ch.length ? ' · อัปเดต DC ในฐาน ' + x.ch.length + ' คัน' : '') + ' · ผู้ชมเห็นข้อมูลใหม่แล้ว');
+      if (x.ch.length) changeLog('อัปเดต DC ตามไฟล์งวด ' + pLabel(k, true), ['ทะเบียน', 'รหัสรถ', 'DC เดิมในฐาน', 'DC ใหม่ตามไฟล์', 'หมายเหตุ'], x.ch.map(function (c) { return [c.m.plate, c.m.code, c.from, c.to, c.multi ? 'วิ่งหลาย DC · ใช้ DC รายได้มากสุด' : '']; }));
+      say('✅ บันทึกงวด ' + pLabel(k, true) + ' แล้ว · ' + nf(x.rows.length) + ' แถว' + (x.ch.length ? ' · อัปเดต DC ในฐาน ' + x.ch.length + ' คัน (ดาวน์โหลด Excel รายการที่เปลี่ยนแล้ว)' : '') + ' · ผู้ชมเห็นข้อมูลใหม่แล้ว');
       renderAdmin();
     }).catch(function (e) { if (btn) btn.disabled = false; say('บันทึกไม่สำเร็จ: ' + (e.message === 'denied' ? 'รหัสไม่ถูกต้อง' : e.message === 'unknown' ? 'Apps Script ยังเป็นรุ่นเก่า' : e.message), true); });
+}
+function changeLog(title, head, rows) {   /* ทุกครั้งที่ระบบแก้ฐานข้อมูลรถ → ดาวน์โหลด Excel รายการที่เปลี่ยน */
+  try {
+    var wb = XLSX.utils.book_new(), d = new Date();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[title], ['เมื่อ ' + d.toLocaleString('th-TH')], []].concat([head]).concat(rows)), 'รายการที่เปลี่ยน');
+    XLSX.writeFile(wb, 'NIMEX-เปลี่ยนแปลงฐานข้อมูลรถ-' + d.toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.xlsx');
+  } catch (e) {}
 }
 function tabKpi() {
   var C = cfg(), tw = C.kpis.reduce(function (a, k) { return a + (+k.weight || 0); }, 0);
@@ -337,6 +351,7 @@ function tabCond() {
   return card('เงื่อนไขการนับรถ', '<div class="fp-form">' +
     '<label>DC ที่ตัดออก (รหัส คั่นด้วยจุลภาค)<input id="fp-ex" value="' + E(C.exclude.join(', ')) + '" placeholder="801"></label>' +
     '<label>DC ที่รวมกัน (บรรทัดละ 1 คู่ รูปแบบ รหัสเดิม=รหัสที่ใช้)<textarea id="fp-al" rows="3">' + E(Object.keys(C.alias).map(function (a) { return a + '=' + C.alias[a]; }).join('\n')) + '</textarea></label>' +
+    '<label>ไม่นับรถรหัสประเภทตั้งแต่ (ทุกมิติ · 060 = 6 ล้อ, 100 = 10 ล้อ, 065 = ลูกพ่วง · 0 = นับทุกประเภท)<input id="fp-tm" type="number" min="0" max="999" value="' + typeMin() + '" style="max-width:120px"></label>' +
     '<label class="fp-chk"><input type="checkbox" id="fp-mo"' + (C.masterOnly ? ' checked' : '') + '> นับเฉพาะรถในฐานข้อมูลรถ</label>' +
     '<label class="fp-chk"><input type="checkbox" id="fp-dz"' + (C.dropZero ? ' checked' : '') + '> KPI จากไฟล์: ไม่นับรถที่ทุกช่องเป็น 0 (ไม่มีรายได้/ค่าใช้จ่ายในงวด)</label>' +
     '<div>หน่วยนับของ KPI จากไฟล์: <label class="fp-chk"><input type="radio" name="fp-u" value="row"' + (C.unit !== 'plate' ? ' checked' : '') + '> แยกตามทะเบียน + DC ตามไฟล์</label> <label class="fp-chk"><input type="radio" name="fp-u" value="plate"' + (C.unit === 'plate' ? ' checked' : '') + '> รวมเป็น 1 คัน (ยอดทุก DC)</label></div>' +
@@ -413,7 +428,7 @@ function onClick(e) {
     if (ex.some(function (x) { return !/^\d{2,5}$/.test(x); })) bad = 'DC ที่ตัดออกต้องเป็นรหัสตัวเลข';
     $('fp-al').value.split(/\n/).map(function (l) { return l.trim(); }).filter(Boolean).forEach(function (l) { var m = l.match(/^(\d{2,5})\s*=\s*(\d{2,5})$/); if (!m) bad = 'รูปแบบ DC ที่รวมกันไม่ถูกต้อง: ' + l; else al[m[1]] = m[2]; });
     if (bad) return say(bad, true);
-    C.exclude = ex; C.alias = al; C.masterOnly = $('fp-mo').checked; C.dropZero = $('fp-dz').checked; C.unit = (document.querySelector('[name=fp-u]:checked') || {}).value === 'plate' ? 'plate' : 'row';
+    C.exclude = ex; C.alias = al; C.typeMin = Math.max(0, Math.round(+$('fp-tm').value || 0)); C.masterOnly = $('fp-mo').checked; C.dropZero = $('fp-dz').checked; C.unit = (document.querySelector('[name=fp-u]:checked') || {}).value === 'plate' ? 'plate' : 'row';
     learnNames(); saveCfg(C, '✅ บันทึกเงื่อนไขแล้ว ทุกหน้าคำนวณใหม่');
   }
   else if (a === 'msave') {
@@ -457,11 +472,13 @@ function start() {
   window.renderCurrentPage = renderCurrentPage = function () { if (currentPage === 'kpi' || currentPage === 'admin') render(); else orig(); };
   document.addEventListener('click', onClick); document.addEventListener('change', onChange);
   if (window.ftoViews) ftoViews.start();
+  if (window.ftoDebt) ftoDebt.start();
   window.FTO_ROWS = []; apply(); window.FTO_ROWS = DB.slice();
   window.ftoStart();
   if (!CUR && adm()) { var t = Array.prototype.find.call(document.querySelectorAll('.navtab'), function (x) { return /ตั้งค่า/.test(x.textContent); }); if (t) t.click(); }
 }
-window.ftoPeriod = { dataset: dataset, prevFor: prevFor, spanLabel: spanLabel, months: months, monthKeys: monthKeys, view: VIEW, setView: function (k, v) { VIEW[k] = v; refresh(); }, P: function () { return P; }, gradesOn: gradesOn,
+window.ftoPeriod = { changeLog: changeLog, bigType: bigType, saveCfg: function (C, msg) { return saveCfg(C, msg); }, say: say, renderAdmin: function () { renderAdmin(); }, setTab: function (t) { UI.tab = t; UI.msg = ''; },
+  periodEnd: function (k) { var a = k.split('-'), y = +a[0] - 543, m = +a[1]; return a[2] === '1' ? new Date(y, m - 1, 15) : new Date(y, m, 0); }, dataset: dataset, prevFor: prevFor, spanLabel: spanLabel, months: months, monthKeys: monthKeys, view: VIEW, setView: function (k, v) { VIEW[k] = v; refresh(); }, P: function () { return P; }, gradesOn: gradesOn,
   start: start, refresh: function () { learnNames(); refresh(); }, show: show, overall: overall, kval: kval, units: units, built: built, stage: stage, dcChanges: dcChanges, parseFile: parseFile,
   unmatched: function () { return CUR ? built(CUR).unmatched : []; }, get keys() { return KEYS; }, get cur() { return CUR; }, get cfg() { return cfg(); }, label: pLabel };
 })();

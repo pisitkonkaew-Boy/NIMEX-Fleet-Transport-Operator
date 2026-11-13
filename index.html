@@ -573,6 +573,15 @@ body.vw-nosb #sidebar{display:none!important}
 @media(max-width:900px){.vw-grid8{grid-template-columns:repeat(2,minmax(0,1fr))}.vw-two{grid-template-columns:1fr}}
 @media(max-width:1180px){#vw-bar{flex-wrap:wrap}.vw-grp{flex:1 1 150px}.vw-grp.vw-fix{flex:0 0 auto}}
 @media(max-width:760px){#vw-bar{gap:8px}.vw-grp,.vw-grp.vw-fix{flex:1 1 140px}.vw-end{flex:1 1 100%}.vw-reset{width:100%!important}.vw-buckets{grid-template-columns:repeat(2,minmax(0,1fr))}.vw-card .kpi-value{font-size:22px}}
+
+/* ===== รถรอปรับสภาพหนี้ (debt.js) ===== */
+.db-st{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:16px}
+.db-stc{display:grid;gap:2px;text-align:left;background:var(--card);border:1px solid var(--border);border-left:6px solid var(--c);border-radius:12px;padding:10px 14px;cursor:pointer;color:var(--text)}
+.db-stc b{font-size:24px}.db-stc span{font-weight:600;font-size:13.5px}.db-stc small{color:var(--text3);font-size:12px}
+.db-stc.on{background:var(--glow);box-shadow:0 0 0 2px var(--c) inset}
+.db-chip{display:inline-block;padding:3px 9px;border-radius:999px;background:var(--c);color:#fff;font-size:12px;font-weight:600;white-space:nowrap}
+.db-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:900px){.db-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 </head>
 <body>
@@ -594,6 +603,7 @@ body.vw-nosb #sidebar{display:none!important}
   <div class="navtab" onclick="switchPage('risk')">⚠️ วิเคราะห์ความเสี่ยง</div>
   <div class="navtab" onclick="ftoFleet.show('zone',this)">🗺️ สรุปโซน / DC</div>
   <div class="navtab" onclick="ftoPeriod.show('kpi',this)">🎯 KPI แผนก</div>
+  <div class="navtab" onclick="ftoDebt.show(this)">💳 รถรอปรับสภาพหนี้</div>
   <div class="navtab nx-admin-only" onclick="ftoPeriod.show('admin',this)">⚙️ ตั้งค่า</div>
 </div>
 
@@ -777,6 +787,8 @@ body.vw-nosb #sidebar{display:none!important}
 
     <!-- PAGE: ZONE / DC SUMMARY (fleetdb.js) -->
     <div class="page" id="page-zone"><div class="table-header fl-head"><span class="table-title">🗺️ สรุปโซน / DC · ฐานข้อมูลรถ</span></div><div id="fl-zone-body"></div></div>
+    <!-- PAGE: DEBT (debt.js) -->
+    <div class="page" id="page-debt"><div id="db-body"></div></div>
     <!-- PAGE: KPI (period.js) -->
     <div class="page" id="page-kpi"><div class="table-header fl-head"><span class="table-title">🎯 KPI แผนก Fleet Planning · รายงวด</span></div><div id="fp-kpi-body"></div></div>
     <!-- PAGE: SETTINGS / UPLOAD (admin, period.js) -->
@@ -1996,10 +2008,11 @@ window.nxAfterStart=function(){var sel=document.getElementById('themeSelect');if
  if(t&&t!==sel.value&&[].some.call(sel.options,function(o){return o.value===t})){sel.value=t;sel.dispatchEvent(new Event('change'))}
  sel.addEventListener('change',function(){try{localStorage.setItem('nimex-fto-theme',sel.value)}catch(e){}})};
 </script>
-<script src="config.js?v=4"></script>
-<script src="fleetdb.js?v=3"></script>
-<script src="views.js?v=3"></script>
-<script src="period.js?v=3"></script>
-<script src="boot.js?v=4"></script>
+<script src="config.js?v=5"></script>
+<script src="fleetdb.js?v=5"></script>
+<script src="views.js?v=5"></script>
+<script src="debt.js?v=5"></script>
+<script src="period.js?v=5"></script>
+<script src="boot.js?v=5"></script>
 </body>
 </html>

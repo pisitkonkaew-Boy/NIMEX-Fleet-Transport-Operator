@@ -39,7 +39,11 @@ function fileDcs() {   /* ทะเบียน → DC ทั้งหมดท�
   DB.forEach(function (r) { var k = pn(r.plate), c = dcCode(r.dc_name); (FDC[k] = FDC[k] || {})[c] = dcClean(r.dc_name); });
   return FDC;
 }
-function match(r) { return byPlate[pn(r.plate)] || byCode[cn(r.dc_code)] || null; }
+function match(r) {   /* ตัวตนรถ = รหัสรถ (ทะเบียนเดียวมีได้หลายรหัส) · ใช้ทะเบียนเฉพาะเมื่อแถวไม่มีรหัส หรือรถในฐานไม่ได้ใส่รหัส */
+  var c = cn(r.dc_code), p = byPlate[pn(r.plate)];
+  if (c) return byCode[c] || (p && !cn(p.code) ? p : null);
+  return p || null;
+}
 function info(r) {
   var m = match(r);
   var f = fileDcs()[pn(r.plate)] || {}, multi = Object.keys(f).length > 1;
