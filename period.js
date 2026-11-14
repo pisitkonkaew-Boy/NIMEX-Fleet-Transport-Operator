@@ -20,7 +20,11 @@ var DEF = {
   ],
   overall: { A: 3.5, B: 2.5, C: 1.5, D: 0.5 },
   exclude: ['801'], alias: { '680': '691', '690': '691' }, masterOnly: true, countMode: 'revenue', typeLow: 40, unit: 'row', dropZero: false, typeMin: 60,
-  typeGroup: { '041': '040', '044': '042' }   /* แสดงผลรถ 2 กลุ่ม: 4 ล้อกลาง → ปิกอัพ · ควบคุมอุณหภูมิ4WJ → ควบคุมอุณหภูมิ4W */
+  typeGroup: { '041': '040', '044': '042' },
+  /* ตัดทุกมิติ: ประเภทผู้ถือครอง (NIMEX610) 05 รถเสริม-ชั่วคราว · ทะเบียน XXX (รหัสรวม ไม่ใช่รถคันเดียว)
+     รหัสที่ไม่อยู่ใน NIMEX610 เดาประเภทจาก 4 หลักแรกของรหัส (4202/4002/4035 = 01 รถบริษัท · 4009/4109/4209 = 05 รถเสริม) */
+  excludeEmp: ['05'], dropXPlate: true,
+  prefixEmp: { '4202': '01', '4002': '01', '4035': '01', '4009': '05', '4109': '05', '4209': '05' }   /* แสดงผลรถ 2 กลุ่ม: 4 ล้อกลาง → ปิกอัพ · ควบคุมอุณหภูมิ4WJ → ควบคุมอุณหภูมิ4W */
 };
 var SRC = { net_ge: 'คำนวณจากไฟล์: % รถที่ยอดคงเหลือสุทธิ ≥ เกณฑ์ (บาท)', manual: 'ผู้ดูแลกรอกค่าเองทุกงวด' };
 
@@ -60,11 +64,20 @@ function bigType(t) { var m = String(t || '').match(/^\s*(\d{3})/), lim = typeMi
 var TNAME = { '040': '040  รถปิกอัพ', '042': '042  รถควบคุมอุณหภูมิ4W' };
 function typeGroup() { var g = cfg().typeGroup; return g === undefined || g === null ? DEF.typeGroup : g; }
 function tcode(t) { var m = String(t || '').match(/^\s*(\d{3})/); return m ? m[1] : ''; }
+function excludeEmp() { var e = cfg().excludeEmp; return Array.isArray(e) ? e : DEF.excludeEmp; }
+function dropXPlate() { var d = cfg().dropXPlate; return d === undefined ? DEF.dropXPlate : !!d; }
+function prefixEmp() { var m = cfg().prefixEmp; return m && typeof m === 'object' ? m : DEF.prefixEmp; }
+function dropRow(o) {
+  if (dropXPlate() && /^x+/i.test(String(o.plate || '').trim())) return true;
+  var c = String(o.dc_code || '').replace(/\D/g, '').replace(/^0+/, ''), e = window.ftoDebt && ftoDebt.empOf ? ftoDebt.empOf(c) : '';
+  return !!e && excludeEmp().indexOf(e) >= 0;
+}
 function stage(k) {   /* ขั้น 1–2: ตัด DC ยกเว้น + ตัดรถ 6 ล้อขึ้นไป + รวม DC */
   var C = cfg(), raw = objs(P[k]), ex = 0, al = 0, big = 0, out = [];
   raw.forEach(function (o) {
     if (C.exclude.indexOf(code(o.dc_name)) >= 0) { ex++; return; }
     if (bigType(o.vehicle_type)) { big++; return; }
+    if (dropRow(o)) { big++; return; }
     var n = canon(o.dc_name); if (n !== o.dc_name) { al++; o.dc_name = n; }
     var tg = typeGroup()[tcode(o.vehicle_type)]; if (tg) { o.vehicle_type_raw = o.vehicle_type; o.vehicle_type = TNAME[tg] || (raw.filter(function (x) { return tcode(x.vehicle_type) === tg; })[0] || {}).vehicle_type || tg; }
     out.push(o);
@@ -368,6 +381,9 @@ function tabCond() {
     '<label>DC ที่ตัดออก (รหัส คั่นด้วยจุลภาค)<input id="fp-ex" value="' + E(C.exclude.join(', ')) + '" placeholder="801"></label>' +
     '<label>DC ที่รวมกัน (บรรทัดละ 1 คู่ รูปแบบ รหัสเดิม=รหัสที่ใช้)<textarea id="fp-al" rows="3">' + E(Object.keys(C.alias).map(function (a) { return a + '=' + C.alias[a]; }).join('\n')) + '</textarea></label>' +
     '<label>ไม่นับรถรหัสประเภทตั้งแต่ (ทุกมิติ · 060 = 6 ล้อ, 100 = 10 ล้อ, 065 = ลูกพ่วง · 0 = นับทุกประเภท)<input id="fp-tm" type="number" min="0" max="999" value="' + typeMin() + '" style="max-width:120px"></label>' +
+    '<label>ไม่นับทุกมิติ: ประเภทผู้ถือครองใน NIMEX610 (รหัส 2 หลัก คั่นด้วย , เช่น 05 = รถเสริม-ชั่วคราว)<input id="fp-xe" value="' + E(excludeEmp().join(', ')) + '"></label>' +
+    '<label class="fp-chk"><input type="checkbox" id="fp-xp"' + (dropXPlate() ? ' checked' : '') + '> ไม่นับรหัสที่ทะเบียนเป็น XXX (รหัสรวม ไม่ใช่รถคันเดียว)</label>' +
+    '<label>รหัสที่ไม่อยู่ใน NIMEX610: เดาประเภทผู้ถือครองจาก 4 หลักแรกของรหัส (บรรทัดละ 1 คู่ เช่น 4202=01)<textarea id="fp-pe" rows="3">' + E(Object.keys(prefixEmp()).map(function (a) { return a + '=' + prefixEmp()[a]; }).join('\n')) + '</textarea></label>' +
     '<label>รวมประเภทรถตอนแสดงผล (บรรทัดละ 1 คู่ รูปแบบ รหัสประเภทเดิม=รหัสที่ใช้ · 041 = 4 ล้อกลาง → 040 ปิกอัพ)<textarea id="fp-tg" rows="2">' + E(Object.keys(typeGroup()).map(function (a) { return a + '=' + typeGroup()[a]; }).join('\n')) + '</textarea></label>' +
     '<div>วิธีนับรถวิ่งงาน: <label class="fp-chk"><input type="radio" name="fp-cm" value="revenue"' + (countMode() === 'revenue' ? ' checked' : '') + '> ตามจริง — รถที่มีรายได้ในงวดนั้น ไม่รวมรถบริษัท (NIMEX610) และรหัสที่ตอบว่าไม่ใช่รถวิ่งงาน</label> <label class="fp-chk"><input type="radio" name="fp-cm" value="master"' + (countMode() !== 'revenue' ? ' checked' : '') + '> ตามฐานข้อมูลรถ</label></div>' +
     '<label>วิธีตามจริง: ไม่นับรหัสประเภทต่ำกว่า (040 = ไม่นับมอเตอร์ไซต์ 020 และรถใช้งานบริษัท 030)<input id="fp-tl" type="number" min="0" max="999" value="' + typeLow() + '" style="max-width:120px"></label>' +
@@ -448,6 +464,10 @@ function onClick(e) {
     $('fp-al').value.split(/\n/).map(function (l) { return l.trim(); }).filter(Boolean).forEach(function (l) { var m = l.match(/^(\d{2,5})\s*=\s*(\d{2,5})$/); if (!m) bad = 'รูปแบบ DC ที่รวมกันไม่ถูกต้อง: ' + l; else al[m[1]] = m[2]; });
     var tgm = {}; $('fp-tg').value.split(/\n/).map(function (l) { return l.trim(); }).filter(Boolean).forEach(function (l) { var m = l.match(/^(\d{3})\s*=\s*(\d{3})$/); if (!m) bad = 'รูปแบบรวมประเภทรถไม่ถูกต้อง (ต้องเป็นรหัส 3 หลัก เช่น 041=040): ' + l; else tgm[m[1]] = m[2]; });
     if (bad) return say(bad, true);
+    var xe = $('fp-xe').value.split(/[\s,]+/).filter(Boolean); xe.forEach(function (x) { if (!/^\d{2}$/.test(x)) bad = 'ประเภทผู้ถือครองต้องเป็นรหัส 2 หลัก: ' + x; });
+    var pem = {}; $('fp-pe').value.split(/\n/).map(function (l) { return l.trim(); }).filter(Boolean).forEach(function (l) { var m = l.match(/^(\d{4})\s*=\s*(\d{2})$/); if (!m) bad = 'รูปแบบเดาประเภทไม่ถูกต้อง (เช่น 4202=01): ' + l; else pem[m[1]] = m[2]; });
+    if (bad) return say(bad, true);
+    C.excludeEmp = xe; C.dropXPlate = $('fp-xp').checked; C.prefixEmp = pem;
     C.typeGroup = tgm; C.exclude = ex; C.alias = al; C.typeMin = Math.max(0, Math.round(+$('fp-tm').value || 0)); C.masterOnly = $('fp-mo').checked; C.countMode = (document.querySelector('[name=fp-cm]:checked') || {}).value === 'master' ? 'master' : 'revenue'; C.typeLow = Math.max(0, Math.round(+$('fp-tl').value || 0)); C.dropZero = $('fp-dz').checked; C.unit = (document.querySelector('[name=fp-u]:checked') || {}).value === 'plate' ? 'plate' : 'row';
     learnNames(); saveCfg(C, '✅ บันทึกเงื่อนไขแล้ว ทุกหน้าคำนวณใหม่');
   }
@@ -499,6 +519,6 @@ function start() {
 }
 window.ftoPeriod = { changeLog: changeLog, bigType: bigType, saveCfg: function (C, msg) { return saveCfg(C, msg); }, say: say, renderAdmin: function () { renderAdmin(); }, setTab: function (t) { UI.tab = t; UI.msg = ''; },
   periodEnd: function (k) { var a = k.split('-'), y = +a[0] - 543, m = +a[1]; return a[2] === '1' ? new Date(y, m - 1, 15) : new Date(y, m, 0); }, dataset: dataset, prevFor: prevFor, spanLabel: spanLabel, months: months, monthKeys: monthKeys, view: VIEW, setView: function (k, v) { VIEW[k] = v; refresh(); }, P: function () { return P; }, gradesOn: gradesOn,
-  groupType: function (t) { var g = typeGroup()[tcode(t)]; return String(g ? (TNAME[g] || t) : (t || '')).replace(/^\d+\s+/, ''); }, start: start, refresh: function () { learnNames(); refresh(); }, show: show, overall: overall, kval: kval, units: units, built: built, stage: stage, dcChanges: dcChanges, parseFile: parseFile,
+  prefixEmp: prefixEmp, groupType: function (t) { var g = typeGroup()[tcode(t)]; return String(g ? (TNAME[g] || t) : (t || '')).replace(/^\d+\s+/, ''); }, start: start, refresh: function () { learnNames(); refresh(); }, show: show, overall: overall, kval: kval, units: units, built: built, stage: stage, dcChanges: dcChanges, parseFile: parseFile,
   unmatched: function () { return CUR ? built(CUR).unmatched : []; }, get keys() { return KEYS; }, get cur() { return CUR; }, get cfg() { return cfg(); }, label: pLabel };
 })();

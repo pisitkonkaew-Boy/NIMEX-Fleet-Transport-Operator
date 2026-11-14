@@ -102,7 +102,9 @@ function agg() {
   return AGG;
 }
 function inMaster(x) { return !!(window.ftoFleet && ftoFleet.match({ dc_code: x.code.indexOf('p:') === 0 ? '' : x.code, plate: x.plate })); }
-function isCompany(x) { var g = RBC[x.code]; return (g && /^01/.test(g.emp)) || /^030/.test(String(x.type || '')); }
+/* ประเภทผู้ถือครอง 2 หลัก: จาก NIMEX610 ถ้าไม่มีเดาจาก 4 หลักแรกของรหัส (ตั้งค่าในหน้าเงื่อนไข) */
+function empOf(c) { c = cn(c); var g = RBC[c]; if (g) return (String(g.emp || '').match(/^\d{2}/) || [''])[0]; var m = FP() && FP().prefixEmp ? FP().prefixEmp() : {}; return m[String(c).slice(0, 4)] || ''; }
+function isCompany(x) { return empOf(x.code) === '01' || /^030/.test(String(x.type || '')); }
 function holder(x) {
   if (!REG) return { k: 'noreg' };
   var others = (RBP[pn(x.plate)] || []).filter(function (o) { return cn(o.code) !== x.code; });
@@ -314,5 +316,5 @@ function start() {
   window.renderCurrentPage = renderCurrentPage = function () { if (currentPage === 'debt') renderPage(); else orig(); };
   document.addEventListener('click', onClick); document.addEventListener('change', onChange);
 }
-window.ftoDebt = { isCompanyCode: function (c) { var g = RBC[c]; return !!(g && /^01/.test(g.emp)); }, start: start, show: show, tabs: tabs, tab: tab, debtList: debtList, pendingList: pendingList, resignWarn: resignWarn, holder: holder, loadReg: loadReg, parse610: parse610, parseDep: parseDep, loadDep: loadDep, get dep() { return DEP; }, reset: function () { AGG = null; }, get reg() { return REG; } };
+window.ftoDebt = { empOf: empOf, isCompanyCode: function (c) { return empOf(c) === '01'; }, start: start, show: show, tabs: tabs, tab: tab, debtList: debtList, pendingList: pendingList, resignWarn: resignWarn, holder: holder, loadReg: loadReg, parse610: parse610, parseDep: parseDep, loadDep: loadDep, get dep() { return DEP; }, reset: function () { AGG = null; }, get reg() { return REG; } };
 })();
